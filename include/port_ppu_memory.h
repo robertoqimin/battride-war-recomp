@@ -2,7 +2,7 @@
 /* Port-local fast paths for selected generated PPU translation units only.
  * Keep ppu_recomp.h unmodified and leave the SDK runtime's accessors intact. */
 #include <stdint.h>
-#if defined(__GNUC__) && !defined(_WIN32)
+#if defined(__GNUC__) && (!defined(_WIN32) || defined(__MINGW32__))
 /* GCC left these small helpers out of line in several very large generated
  * functions. Retain their existing diagnostics, MMIO and bounds predicates. */
 static inline uint8_t vm_read8_inl(uint64_t) __attribute__((always_inline));
@@ -13,7 +13,7 @@ static inline uint64_t vm_read64_inl(uint64_t) __attribute__((always_inline));
 #endif
 #include "ppu_recomp.h"
 
-#if defined(__GNUC__) && !defined(_WIN32)
+#if defined(__GNUC__) && (!defined(_WIN32) || defined(__MINGW32__))
 
 extern "C" {
 extern int port_ppu_store_inline_ok;

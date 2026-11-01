@@ -1499,7 +1499,7 @@ void port_ppu_store_gate_update(void)
 }
 static struct PortStoreInlineInit {
     PortStoreInlineInit() {
-#ifndef _WIN32
+#if !defined(_WIN32) || defined(__MINGW32__)
         port_ppu_store_inline_ok = !(getenv("PPU_WVAL") || getenv("PPU_WWATCH") ||
                                     getenv("PT") || getenv("PORT_PPU_MEMORY_SLOW"));
 #endif

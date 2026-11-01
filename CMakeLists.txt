@@ -506,7 +506,7 @@ endif()
 # guarded inline paths only to profiled chunks, avoiding growth in cold code.
 option(PORT_PPU_FAST_MEMORY "Inline guarded PPU memory accesses in hot chunks" ON)
 set(PORT_PPU_FAST_MEMORY_CHUNKS "015;017;021;029;030" CACHE STRING "Generated PPU chunks using guarded inline memory")
-if(PORT_PPU_FAST_MEMORY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)
+if(PORT_PPU_FAST_MEMORY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW))
     foreach(chunk IN LISTS PORT_PPU_FAST_MEMORY_CHUNKS)
         set(source "${RECOMP_DIR}/ppu_recomp_${chunk}.cpp")
         if(NOT EXISTS "${source}")
@@ -522,7 +522,7 @@ endif()
 # leaves the replacement off rather than failing to link.
 option(PORT_PPU_NATIVE "Native replacements for hot translated PPU functions" ON)
 set(PORT_PPU_NATIVE_CHUNK "029" CACHE STRING "Generated PPU chunk defining func_004B5120")
-if(PORT_PPU_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)
+if(PORT_PPU_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW))
     set(source "${RECOMP_DIR}/ppu_recomp_${PORT_PPU_NATIVE_CHUNK}.cpp")
     set(native_defined "")
     if(EXISTS "${source}")
@@ -540,7 +540,7 @@ endif()
 # The same fast path for every other translated store, out of line: the
 # linker sends the chunks' vm_write8/16/32/64 calls to store_wrap.c.
 option(PORT_PPU_WRAP_STORES "Route translated stores through the fast path in store_wrap.c" ON)
-if(PORT_PPU_WRAP_STORES AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32 AND NOT APPLE)
+if(PORT_PPU_WRAP_STORES AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW) AND NOT APPLE)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/store_wrap.c")
     target_link_options(${PROJECT_NAME} PRIVATE
         "-Wl,--wrap=vm_write8,--wrap=vm_write16,--wrap=vm_write32,--wrap=vm_write64")
