@@ -483,6 +483,10 @@ int main(int argc, char** argv)
      * thing. POSIX timers are already fine-grained. */
     timeBeginPeriod(1);
     setvbuf(stdout, NULL, _IONBF, 0);   /* unbuffered: do not lose prints on a kill */
+    /* SDL's RawInput driver took this game's controllers and delivered only
+     * their triggers: buttons and sticks arrive as window messages it did not
+     * get here. Its XInput driver reads everything. Before SDL starts. */
+    if (!getenv("SDL_JOYSTICK_RAWINPUT")) _putenv("SDL_JOYSTICK_RAWINPUT=0");
 #endif
 
     printf("=== ps3recomp game runner ===\n");

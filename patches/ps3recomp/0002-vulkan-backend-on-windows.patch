@@ -67,3 +67,119 @@ index 2e65b8ee..064a22cd 100644
  int  rsx_live_draw_enabled(void) { return 0; }
  int  rsx_live_draw_init(void* hwnd, u32 w, u32 h, rsx_live_guest_ptr_fn f, void* u)
  { (void)hwnd; (void)w; (void)h; (void)f; (void)u; return 0; }
+diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
+index c64b0b8d..c5d61211 100644
+--- a/runtime/syscalls/sys_ppu_thread.c
++++ b/runtime/syscalls/sys_ppu_thread.c
+@@ -19,6 +19,20 @@
+ static PPU_TLS jmp_buf s_exit_jmp;
+ static PPU_TLS int     s_exit_armed = 0;
+ 
++/* libmixer's _cellsurMixerMain creates the audio notify queue and stores its key
++ * in a global, and cellSurMixerStart passes that global to
++ * cellAudioSetNotifyEventQueue with nothing ordering the two: it counts on the
++ * new thread having started. A Windows thread with its reserved stack can start
++ * later than that, the key registered is then 0, and the mixer never gets an
++ * event: no sound, and a movie that never ends. So its creator waits here until
++ * the new thread blocks, or for at most this long. */
++#if defined(_WIN32) && defined(PS3RECOMP_RSX_VULKAN)
++#define PPU_WAIT_FIRST_BLOCK 1
++#define PPU_FIRST_BLOCK_WAIT_MS 1000
++static PPU_TLS void* s_first_block_event = NULL;
++static void ppu_thread_first_block(void);
++#endif
++
+ #include <stddef.h>
+ #include "sys_ppu_thread.h"
+ #include "../platform/win32_compat.h"   /* GetCurrentThreadId on POSIX */
+@@ -48,6 +62,18 @@ static PPU_TLS int     s_exit_armed = 0;
+ ppu_thread_info       g_ppu_threads[PPU_THREAD_MAX];
+ vm_stack_alloc        g_vm_stack_alloc;
+ ppu_thread_entry_fn   g_ppu_thread_entry_trampoline = NULL;
++#ifdef PPU_WAIT_FIRST_BLOCK
++static HANDLE g_first_block[PPU_THREAD_MAX];   /* handed to the new thread at its start */
++
++static void ppu_thread_first_block(void)
++{
++    if (s_first_block_event) {
++        SetEvent((HANDLE)s_first_block_event);
++        CloseHandle((HANDLE)s_first_block_event);
++        s_first_block_event = NULL;
++    }
++}
++#endif
+ 
+ /* Simple mutex for thread table access */
+ #ifdef _WIN32
+@@ -118,6 +144,10 @@ static void* ppu_host_thread_proc(void* param)
+      * backtrace that would name the recursing function is lost. */
+     { ULONG g = 256 * 1024; SetThreadStackGuarantee(&g); }
+ #endif
++#ifdef PPU_WAIT_FIRST_BLOCK
++    s_first_block_event = g_first_block[info->ctx.thread_id - 1];
++    g_first_block[info->ctx.thread_id - 1] = NULL;
++#endif
+ 
+     /* Register this thread's context for lwarx/stwcx cross-thread reservation
+      * invalidation (ppu_loader.cpp) -- so a concurrent stwcx breaks this thread's
+@@ -165,6 +195,10 @@ static void* ppu_host_thread_proc(void* param)
+                 (unsigned long long)info->ctx.thread_id);
+     }
+ 
++#ifdef PPU_WAIT_FIRST_BLOCK
++    ppu_thread_first_block();           /* ended without ever blocking */
++#endif
++
+     /* Mark as finished */
+     table_lock();
+     info->exit_status = (int64_t)info->ctx.gpr[3];
+@@ -219,6 +253,9 @@ static int    g_gate_n = 0;
+ static int    g_gate_on = -1;
+ void ydkj_release_pending_threads(void)
+ {
++#ifdef PPU_WAIT_FIRST_BLOCK
++    ppu_thread_first_block();
++#endif
+     if (g_gate_on <= 0) return;
+     table_lock();
+     int n = g_gate_n; g_gate_n = 0;
+@@ -466,10 +503,26 @@ int64_t sys_ppu_thread_create(ppu_context* ctx)
+     unsigned _initflag = STACK_SIZE_PARAM_IS_A_RESERVATION;
+     int _gate_this = (g_gate_on > 0 && entry >= 0x10000 && entry < 0x10000000);
+     if (_gate_this) _initflag |= CREATE_SUSPENDED;
++#ifdef PPU_WAIT_FIRST_BLOCK
++    HANDLE first_block_wait = NULL;
++    if (!_gate_this && strcmp(t->name, "_cellsurMixerMain") == 0) {
++        HANDLE ev = CreateEventA(NULL, TRUE, FALSE, NULL);
++        if (ev && !DuplicateHandle(GetCurrentProcess(), ev, GetCurrentProcess(), &first_block_wait,
++                                   0, FALSE, DUPLICATE_SAME_ACCESS)) {
++            CloseHandle(ev);
++            ev = NULL;
++        }
++        g_first_block[slot] = ev;
++    }
++#endif
+     t->host_thread = (HANDLE)_beginthreadex(NULL, 256u * 1024 * 1024,
+                                   (unsigned (__stdcall*)(void*))ppu_host_thread_proc, t,
+                                   _initflag, (unsigned*)&t->host_tid);
+     if (t->host_thread == NULL) {
++#ifdef PPU_WAIT_FIRST_BLOCK
++        if (g_first_block[slot]) { CloseHandle(g_first_block[slot]); g_first_block[slot] = NULL; }
++        if (first_block_wait) CloseHandle(first_block_wait);
++#endif
+         t->state = PPU_THREAD_STATE_FREE;
+         CloseHandle(t->finish_event);
+         table_unlock();
+@@ -525,6 +578,12 @@ int64_t sys_ppu_thread_create(ppu_context* ctx)
+ #endif
+ 
+     table_unlock();
++#ifdef PPU_WAIT_FIRST_BLOCK
++    if (first_block_wait) {
++        WaitForSingleObject(first_block_wait, PPU_FIRST_BLOCK_WAIT_MS);
++        CloseHandle(first_block_wait);
++    }
++#endif
+     return CELL_OK;
+ }
+ 

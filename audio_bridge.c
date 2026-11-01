@@ -1,10 +1,19 @@
 // Keep the SDK audio state/HLE intact; supply a device-paced POSIX mixer loop.
 #include <pthread.h>
 #include <time.h>
+#ifdef _WIN32
+/* The SDK starts its mixer through _beginthreadex here. */
+#include <process.h>
+static uintptr_t port_audio_thread_begin(void*,unsigned,unsigned(__stdcall*)(void*),void*,unsigned,unsigned*);
+#define _beginthreadex port_audio_thread_begin
+#include PORT_AUDIO_SOURCE
+#undef _beginthreadex
+#else
 static int port_audio_thread_create(pthread_t*,const pthread_attr_t*,void*(*)(void*),void*);
 #define pthread_create port_audio_thread_create
 #include PORT_AUDIO_SOURCE
 #undef pthread_create
+#endif
 static unsigned long long port_audio_ns(void) {
     struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);
     return (unsigned long long)t.tv_sec*1000000000ull+t.tv_nsec;
@@ -39,7 +48,15 @@ static void* port_audio_mix(void* unused) {
     while(s_mix_thread_running) {
         int room=audio_backend_room();
         if(room>=0 && room<CELL_AUDIO_BLOCK_SAMPLES){audio_backend_wait();continue;}
+#ifdef _WIN32
+        /* WASAPI drains SDL's queue a device period at a time (about two blocks),
+         * so room alone mixes in bursts: the guest wakes on the first block and
+         * the second is read empty, every other block silent. Keep the clock's
+         * spacing unless the device is about to run out. */
+        if(room<0 || audio_backend_queued_samples()>=CELL_AUDIO_BLOCK_SAMPLES) {
+#else
         if(room<0) {
+#endif
             unsigned long long now=port_audio_ns(),due=epoch+blocks*CELL_AUDIO_BLOCK_SAMPLES*1000000000ull/CELL_AUDIO_SAMPLE_RATE;
             if(now<due) {struct timespec delay={0,1000000};nanosleep(&delay,NULL);continue;}
             if(now-due>50000000)epoch=now-blocks*CELL_AUDIO_BLOCK_SAMPLES*1000000000ull/CELL_AUDIO_SAMPLE_RATE;
@@ -71,6 +88,16 @@ static void* port_audio_mix(void* unused) {
     if(dump)fclose(dump);
     return NULL;
 }
+#ifdef _WIN32
+static unsigned __stdcall port_audio_mix_thread(void* arg) {
+    port_audio_mix(arg);
+    return 0;
+}
+static uintptr_t port_audio_thread_begin(void* security,unsigned stack,unsigned(__stdcall* fn)(void*),void* arg,unsigned flags,unsigned* id) {
+    return _beginthreadex(security,stack,fn==audio_mix_thread_func?port_audio_mix_thread:fn,arg,flags,id);
+}
+#else
 static int port_audio_thread_create(pthread_t* t,const pthread_attr_t* attr,void*(*fn)(void*),void* arg) {
     return pthread_create(t,attr,fn==audio_mix_thread_func?port_audio_mix:fn,arg);
 }
+#endif

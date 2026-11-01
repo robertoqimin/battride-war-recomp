@@ -2,32 +2,115 @@
 // A bounded FFmpeg subprocess: argv is passed directly, never through a shell.
 // PAMF must be demuxed as MPEG; .pam otherwise selects the image demuxer.
 #ifdef _WIN32
-// Not ported yet (docs/WINDOWS.md, stage 2): every movie reports a decoder
-// failure, which the player already handles without pretending it completed.
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <mutex>
 #include <string>
+#include <sys/types.h>
 #include <thread>
 #include <vector>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifndef POLLIN
+#define POLLIN 1
+#endif
 namespace port_sail {
-struct Video {
-    int width = 0, height = 0, rate_num = 0, rate_den = 1;
-    bool probe(const std::string&) { return false; }
-};
-struct Frame { std::vector<uint8_t> bytes; uint64_t index = 0; };
-class Decoder {
-public:
-    void stop() {}
-    bool start(const std::string&, const std::string&, size_t) { return false; }
-    bool take(Frame&) { return false; }
-    bool done(int& code) { code = -1; return true; }
-};
+// poll and non-blocking read over an anonymous pipe, as the code below uses them
+// on POSIX. Anonymous pipes have no overlapped mode, so PeekNamedPipe stands in.
+struct pollfd { HANDLE fd; short events, revents; };
+inline bool pipe_available(HANDLE h, DWORD& available) {
+    available = 0;
+    return PeekNamedPipe(h, nullptr, 0, nullptr, &available, nullptr);
 }
+inline int poll(pollfd* p, int, int timeout_ms) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    DWORD available;
+    while (pipe_available(p->fd, available) && !available) {
+        if (std::chrono::steady_clock::now() >= deadline) return 0;
+        Sleep(1);
+    }
+    return 1;
+}
+inline ssize_t read(HANDLE h, void* data, size_t count) {
+    DWORD available, got = 0;
+    if (pipe_available(h, available)) {
+        if (!available) { errno = EAGAIN; return -1; }
+        if (ReadFile(h, data, count < available ? (DWORD)count : available, &got, nullptr)) return (ssize_t)got;
+    }
+    if (GetLastError() == ERROR_BROKEN_PIPE) return 0;   // the writer closed: end of file
+    errno = EIO;
+    return -1;
+}
+struct Child {
+    HANDLE process = nullptr;
+    HANDLE fd = nullptr;
+    // The rules CommandLineToArgvW and the C runtime parse a command line by.
+    static void quote(std::string& line, const std::string& arg) {
+        if (!line.empty()) line += ' ';
+        if (!arg.empty() && arg.find_first_of(" \t\"") == std::string::npos) { line += arg; return; }
+        line += '"';
+        size_t backslashes = 0;
+        for (char c : arg) {
+            if (c == '\\') { backslashes++; continue; }
+            line.append(c == '"' ? backslashes * 2 + 1 : backslashes, '\\');
+            line += c;
+            backslashes = 0;
+        }
+        line.append(backslashes * 2, '\\');
+        line += '"';
+    }
+    bool spawn(std::vector<std::string> args) {
+        // PATH only, as posix_spawnp: CreateProcess alone also tries the current directory.
+        char program[MAX_PATH];
+        const DWORD found = SearchPathA(std::getenv("PATH"), args[0].c_str(), ".exe", MAX_PATH, program, nullptr);
+        if (!found || found >= MAX_PATH) return false;
+        std::string line;
+        for (const auto& a : args) quote(line, a);
+        SECURITY_ATTRIBUTES inherit{sizeof inherit, nullptr, TRUE};
+        HANDLE reader, writer;
+        if (!CreatePipe(&reader, &writer, &inherit, 1u << 20)) return false;
+        SetHandleInformation(reader, HANDLE_FLAG_INHERIT, 0);
+        HANDLE null_in = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_EXISTING, 0, nullptr);
+        STARTUPINFOA startup{};
+        startup.cb = sizeof startup;
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = null_in;
+        startup.hStdOutput = writer;
+        startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        PROCESS_INFORMATION created{};
+        const BOOL ok = CreateProcessA(program, line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &created);
+        CloseHandle(writer);
+        if (null_in != INVALID_HANDLE_VALUE) CloseHandle(null_in);
+        if (!ok) { CloseHandle(reader); return false; }
+        CloseHandle(created.hThread);
+        process = created.hProcess;
+        fd = reader;
+        return true;
+    }
+    int finish(bool terminate) {
+        if (fd) { CloseHandle(fd); fd = nullptr; }
+        if (!process) return -1;
+        if (terminate) TerminateProcess(process, 1);
+        WaitForSingleObject(process, INFINITE);
+        DWORD code = 0;
+        const BOOL ok = GetExitCodeProcess(process, &code);
+        CloseHandle(process);
+        process = nullptr;
+        return ok ? (int)code : -1;
+    }
+    ~Child() { finish(true); }
+};
 #else
 #include <atomic>
 #include <cerrno>
@@ -82,6 +165,7 @@ struct Child {
     }
     ~Child() { finish(true); }
 };
+#endif /* _WIN32 */
 struct Video {
     int width = 0, height = 0, rate_num = 0, rate_den = 1;
     bool probe(const std::string& path) {
@@ -160,4 +244,3 @@ public:
     }
 };
 }
-#endif /* !_WIN32 */
