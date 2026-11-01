@@ -2,6 +2,27 @@
  * its descriptor table. The SDK checkout itself remains unchanged. */
 #include PORT_PPU_FS_SOURCE
 #include <limits.h>
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+/* pread: a read at an offset that leaves the descriptor's position alone. On a
+ * synchronous handle ReadFile moves it even with an OVERLAPPED offset. */
+static ssize_t port_pread(int fd, void* data, size_t count, uint64_t offset)
+{
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    LARGE_INTEGER zero = {}, position;
+    if (h == INVALID_HANDLE_VALUE || !SetFilePointerEx(h, zero, &position, FILE_CURRENT)) { errno = EIO; return -1; }
+    OVERLAPPED at = {};
+    at.Offset = (DWORD)offset; at.OffsetHigh = (DWORD)(offset >> 32);
+    DWORD got = 0;
+    const BOOL ok = ReadFile(h, data, (DWORD)count, &got, &at);
+    const DWORD failure = ok ? 0 : GetLastError();
+    SetFilePointerEx(h, position, NULL, FILE_BEGIN);
+    if (ok || failure == ERROR_HANDLE_EOF) return (ssize_t)got;
+    errno = EIO;
+    return -1;
+}
+#endif
 
 static void port_fs_read_with_offset(ppu_context* c)
 {
@@ -20,7 +41,11 @@ static void port_fs_read_with_offset(ppu_context* c)
     else if (count) {
         fs_prefault(buf,count);
         ssize_t n;
+#ifdef _WIN32
+        do { n=port_pread(fileno(g_files[fd]),vm_base+buf,(size_t)count,offset); }
+#else
         do { n=pread(fileno(g_files[fd]),vm_base+buf,(size_t)count,(off_t)offset); }
+#endif
         while(n<0 && errno==EINTR);
         if(n<0) error=(int32_t)CELL_FS_EIO;
         else if(out) vm_write64(out,(uint64_t)n);

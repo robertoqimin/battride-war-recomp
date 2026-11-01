@@ -369,6 +369,13 @@ static void port_pad_get_data(ppu_context* c)
  * helper thread appends "<tid> <hex rip> <hex caller>" lines to the file
  * every second (caller 0 when none was found).
  * Symbolise with nm/addr2line against the (non-PIE) executable. */
+#ifdef _WIN32
+/* Not ported yet: docs/WINDOWS.md, stage 4. */
+extern "C" void port_profiler_start(void)
+{
+    if (std::getenv("PORT_PROFILE")) std::fprintf(stderr, "[port-profile] not available on Windows yet\n");
+}
+#else
 #include <csignal>
 #include <ctime>
 #include <thread>
@@ -433,6 +440,7 @@ extern "C" void port_profiler_start(void)
     }).detach();
     std::fprintf(stderr, "[port-profile] sampling at %ld Hz of process CPU time -> %s\n", hz, path);
 }
+#endif /* !_WIN32 */
 
 extern "C" void port_register_sail(void);
 extern "C" void port_register_hle(void)

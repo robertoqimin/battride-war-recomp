@@ -12,6 +12,10 @@
  * the threads above BUSY_PCT, at most one per core and never more than
  * (cores - 2), each to both logical CPUs of its own core; every other thread
  * shares the remaining cores. With fewer than four cores it does nothing. PORT_THREAD_PIN=0 turns it off. */
+#ifdef _WIN32
+/* Not ported yet: docs/WINDOWS.md, stage 4. */
+void port_thread_affinity_start(void) {}
+#else
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <pthread.h>
@@ -153,3 +157,4 @@ void port_thread_affinity_start(void)
     if (pthread_create(&t, &attr, affinity_thread, NULL) == 0) pthread_detach(t);
     pthread_attr_destroy(&attr);
 }
+#endif /* !_WIN32 */

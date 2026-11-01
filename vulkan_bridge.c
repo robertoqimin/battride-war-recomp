@@ -44,7 +44,7 @@
  * with spaces.
  */
 
-#ifndef _WIN32
+#if !defined(_WIN32) || defined(PS3RECOMP_RSX_VULKAN)
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
@@ -64,7 +64,15 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 
+#ifdef _WIN32
+/* vulkan-1.dll through SDL's loader keeps <windows.h> out of this file. */
+#define dlopen(name, flags) SDL_LoadObject(name)
+#define dlsym SDL_LoadFunction
+#define dlclose SDL_UnloadObject
+#define dlerror SDL_GetError
+#else
 #include <dlfcn.h>
+#endif
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -295,7 +303,11 @@ static vk_state s_vk;
  * -------------------------------------------------------------------------*/
 static int vk_load_library(void)
 {
+#ifdef _WIN32
+    static const char* names[] = { "vulkan-1.dll" };
+#else
     static const char* names[] = { "libvulkan.so.1", "libvulkan.so" };
+#endif
     for (size_t i = 0; i < sizeof names / sizeof names[0] && !s_vk.lib; i++)
         s_vk.lib = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
     if (!s_vk.lib) {
@@ -1976,6 +1988,9 @@ static void vk_window_open(const char* title)
      * XWayland the NVIDIA driver offers no MAILBOX present mode, so the
      * window fell back to vsync-blocking FIFO. An explicit SDL_VIDEODRIVER
      * is left alone; if Wayland cannot start, SDL's own choice follows. */
+#ifdef _WIN32
+    int video = SDL_InitSubSystem(SDL_INIT_VIDEO);
+#else
     int forced_wayland = 0;
     if (getenv("WAYLAND_DISPLAY") && !getenv("SDL_VIDEODRIVER")) {
         setenv("SDL_VIDEODRIVER", "wayland", 1);
@@ -1989,6 +2004,7 @@ static void vk_window_open(const char* title)
             video = SDL_InitSubSystem(SDL_INIT_VIDEO);
         }
     }
+#endif
     if (video != 0) {
         VK_LOG("window disabled, continuing headless: SDL video init failed: %s\n", SDL_GetError());
         return;
@@ -4888,4 +4904,4 @@ int rsx_vulkan_backend_depth_bounds(void)
     return s_vk.eng_active && s_vk.depth_bounds_ok;
 }
 
-#endif /* !_WIN32 */
+#endif /* !_WIN32 || PS3RECOMP_RSX_VULKAN */

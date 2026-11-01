@@ -15,6 +15,21 @@
         "PORT_ENABLE_SPU": "ON",
         "PS3RECOMP_RSX_VULKAN": "ON"
       }
+    },
+    {
+      "name": "windows-vulkan",
+      "displayName": "Windows Vulkan + SPU (MSYS2 UCRT64)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-windows",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-O2",
+        "CMAKE_CXX_FLAGS_DEBUG": "-O2",
+        "PORT_ENABLE_SPU": "ON",
+        "PS3RECOMP_RSX_VULKAN": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -22,6 +37,11 @@
       "name": "linux-vulkan",
       "configurePreset": "linux-vulkan",
       "jobs": 4
+    },
+    {
+      "name": "windows-vulkan",
+      "configurePreset": "windows-vulkan",
+      "jobs": 3
     }
   ]
 }

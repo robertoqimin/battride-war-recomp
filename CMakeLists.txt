@@ -112,7 +112,7 @@ add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 
 # Port-local POSIX device pacing and audio diagnostics, sharing SDK HLE state.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32)
     get_target_property(PORT_RUNTIME_SOURCES ps3recomp_runtime SOURCES)
     list(FILTER PORT_RUNTIME_SOURCES EXCLUDE REGEX "libs/audio/cellAudio\\.c$")
     set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_RUNTIME_SOURCES}")
@@ -460,21 +460,25 @@ endif()
 #     and at this volume they bury the diagnostics that matter.
 #   - no floating-point contraction. arm64 fuses a multiply and an add by
 #     default; a PPC fmadd is spelt as one where the lifter means one.
-#   - /bigobj on MSVC. A single lifted file routinely passes the 65,536-section
-#     limit of the default object format.
+#   - /bigobj on MSVC, -mbig-obj on MinGW. A single lifted file routinely passes
+#     the 65,536-section limit of the default object format.
+set(PORT_LIFTED_OPTIONS "-w;-ffp-contract=off")
+if(WIN32 AND NOT MSVC)
+    list(APPEND PORT_LIFTED_OPTIONS "-Wa,-mbig-obj")
+endif()
 if(MSVC)
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "/w;/bigobj")
 else()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "-w;-ffp-contract=off")
+        COMPILE_OPTIONS "${PORT_LIFTED_OPTIONS}")
 endif()
 
 # Hot animation/transform routines observed in the first mission.
 # Preserve guest arithmetic flags, optimize this generated unit only.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set_source_files_properties("${RECOMP_DIR}/ppu_recomp_017.cpp" PROPERTIES
-        COMPILE_OPTIONS "-w;-ffp-contract=off;-O2")
+        COMPILE_OPTIONS "${PORT_LIFTED_OPTIONS};-O2")
 endif()
 
 # ---------------------------------------------------------------------------

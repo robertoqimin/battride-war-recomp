@@ -1,0 +1,69 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bdd2f85a..007b4969 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -50,8 +50,8 @@ list(FILTER HLE_SOURCES EXCLUDE REGEX "/tests/")
+ option(PS3RECOMP_RSX_VULKAN "Build the Vulkan RSX backend (Linux)" OFF)
+ list(FILTER HLE_SOURCES EXCLUDE REGEX "rsx_vulkan_backend\\.c$")
+ if(PS3RECOMP_RSX_VULKAN)
+-    if(WIN32 OR APPLE)
+-        message(FATAL_ERROR "PS3RECOMP_RSX_VULKAN is Linux-only for now")
++    if(APPLE)
++        message(FATAL_ERROR "PS3RECOMP_RSX_VULKAN is Linux and Windows only for now")
+     endif()
+     find_path(PS3RECOMP_VULKAN_INCLUDE_DIR vulkan/vulkan.h)
+     if(NOT PS3RECOMP_VULKAN_INCLUDE_DIR)
+@@ -136,6 +136,15 @@ if(WIN32)
+         ole32       # COM for WASAPI audio
+         bcrypt      # BCryptGenRandom for SSL RNG
+     )
++    # The Vulkan backend opens its window through SDL2, and a port built on it
++    # (MinGW) uses the SDL2 pad and audio backends and pthreads as on Linux.
++    if(PS3RECOMP_RSX_VULKAN)
++        find_package(SDL2 REQUIRED)
++        find_package(Threads REQUIRED)
++        target_link_libraries(ps3recomp_runtime PRIVATE SDL2::SDL2 Threads::Threads)
++        target_compile_definitions(ps3recomp_runtime PRIVATE
++            PS3RECOMP_AUDIO_USE_SDL2 PS3RECOMP_PAD_USE_SDL2)
++    endif()
+ else()
+     # cellPad and cellAudio select their SDL2 backends unconditionally off
+     # Windows (see PAD_BACKEND_SDL2 / AUDIO_BACKEND_SDL2), so SDL2 is required
+@@ -221,7 +230,7 @@ endif()
+ #           the standalone binary as an imported target and fails to load
+ #           without it)
+ set(PS3RECOMP_MSL_TRANSLATION OFF)
+-if(UNIX)
++if(UNIX OR PS3RECOMP_RSX_VULKAN)
+     find_package(glslang CONFIG QUIET)
+ 
+     # spirv-cross's C API. Debian ships it as a shared library and Homebrew as
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+index 7fa8cab9..bee053e0 100644
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -503,7 +503,7 @@ static void pad_poll_backend(void)
+ #elif PAD_BACKEND_SDL2
+     pad_poll_sdl2();
+ #endif
+-#ifdef _WIN32
++#if PAD_BACKEND_XINPUT
+     if (!s_host_state[0].connected) pad_poll_keyboard();
+ #endif
+ }
+diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
+index 2e65b8ee..064a22cd 100644
+--- a/libs/video/rsx_live_draw.c
++++ b/libs/video/rsx_live_draw.c
+@@ -24,9 +24,9 @@
+ #include "ps3emu/yz_frontier_trace.h"
+ #include "ps3emu/log_first.h"
+ 
+-#if !defined(_WIN32)
++#if !defined(_WIN32) || defined(PS3RECOMP_RSX_VULKAN)
+ 
+-/* Non-Windows: the whole path is a no-op (D3D12 is Windows-only). */
++/* Non-Windows, or the Vulkan backend: the whole path is a no-op (D3D12 is Windows-only). */
+ int  rsx_live_draw_enabled(void) { return 0; }
+ int  rsx_live_draw_init(void* hwnd, u32 w, u32 h, rsx_live_guest_ptr_fn f, void* u)
+ { (void)hwnd; (void)w; (void)h; (void)f; (void)u; return 0; }

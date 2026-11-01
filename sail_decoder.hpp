@@ -1,6 +1,34 @@
 #pragma once
 // A bounded FFmpeg subprocess: argv is passed directly, never through a shell.
 // PAMF must be demuxed as MPEG; .pam otherwise selects the image demuxer.
+#ifdef _WIN32
+// Not ported yet (docs/WINDOWS.md, stage 2): every movie reports a decoder
+// failure, which the player already handles without pretending it completed.
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <cstdio>
+#include <deque>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+namespace port_sail {
+struct Video {
+    int width = 0, height = 0, rate_num = 0, rate_den = 1;
+    bool probe(const std::string&) { return false; }
+};
+struct Frame { std::vector<uint8_t> bytes; uint64_t index = 0; };
+class Decoder {
+public:
+    void stop() {}
+    bool start(const std::string&, const std::string&, size_t) { return false; }
+    bool take(Frame&) { return false; }
+    bool done(int& code) { code = -1; return true; }
+};
+}
+#else
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -132,3 +160,4 @@ public:
     }
 };
 }
+#endif /* !_WIN32 */
