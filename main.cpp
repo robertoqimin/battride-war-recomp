@@ -430,6 +430,11 @@ static void pgo_training_hooks(void)
 #ifdef PORT_PGO_GENERATE
     signal(SIGTERM, pgo_dump_and_exit);
     signal(SIGINT, pgo_dump_and_exit);
+#ifdef SIGBREAK
+    /* Windows has no SIGTERM from outside: Ctrl+Break to the game's process
+     * group, which the C runtime delivers as SIGBREAK. */
+    signal(SIGBREAK, pgo_dump_and_exit);
+#endif
 #endif
 }
 
