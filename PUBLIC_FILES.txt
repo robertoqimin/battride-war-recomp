@@ -85,9 +85,11 @@ packaging/graphics_probe.c
 packaging/importer.py
 packaging/launcher.py
 packaging/rpcs3.json
+packaging/rpcs3-windows.json
 scripts/appimage_toolchain.py
 scripts/build_fsr1_shaders.py
 scripts/build_appimage.py
+scripts/build_windows_package.py
 scripts/collect_sources.py
 tests/test_importer.py
 tests/test_input_bridge.c

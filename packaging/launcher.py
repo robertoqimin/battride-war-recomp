@@ -10,8 +10,8 @@ import sys
 import threading
 import time
 
-from importer import (CONTROLS, DISPLAY_FILTERS, DISPLAY_MODES, PAD_BUTTONS, PAD_CONTROLS, RENDER_SCALES,
-                      STICK_DEADZONE, ImportError, Package, Runner, binding_ok)
+from importer import (CONTROLS, DISPLAY_FILTERS, DISPLAY_MODES, EXE, PAD_BUTTONS, PAD_CONTROLS, RENDER_SCALES,
+                      STICK_DEADZONE, WINDOWS, ImportError, Package, Runner, binding_ok)
 
 ROOT = Path(os.environ.get('PORT_APPDIR', Path(__file__).resolve().parents[1]))
 # The log files of one launch, in the order they are written.
@@ -20,6 +20,14 @@ LOG_LIMIT = 2_000_000           # characters kept in the Log page
 
 
 def cpu_check():
+    if WINDOWS:
+        import ctypes
+        present = ctypes.windll.kernel32.IsProcessorFeaturePresent
+        # PF_SSSE3_INSTRUCTIONS_AVAILABLE, PF_SSE4_1_INSTRUCTIONS_AVAILABLE
+        missing = [name for name, feature in (('ssse3', 36), ('sse4_1', 37)) if not present(feature)]
+        if missing:
+            raise ImportError('This game needs an x86_64 CPU with SSE4.1. Missing: ' + ', '.join(missing))
+        return
     flags = set()
     try:
         for line in Path('/proc/cpuinfo').read_text().splitlines():
@@ -56,10 +64,23 @@ def gamemode_command():
 
 def open_folder(path):
     try:
-        subprocess.Popen(['xdg-open', str(path)], env=host_env(), start_new_session=True,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if WINDOWS:
+            os.startfile(str(path))
+        else:
+            subprocess.Popen(['xdg-open', str(path)], env=host_env(), start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
+
+
+def default_dirs():
+    """(data folder, settings file) for this system."""
+    if WINDOWS:
+        local = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local'))
+        roaming = Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming'))
+        return local / 'battride-war-port', roaming / 'battride-war-port/settings.json'
+    return (Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'battride-war-port',
+            Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'battride-war-port/settings.json')
 
 
 def main():
@@ -76,16 +97,22 @@ def main():
     if args.check:
         cpu_check()
         for tool in ('7z', 'ffmpeg', 'ffprobe'):
-            if not (ROOT / 'usr/bin' / tool).is_file():
+            if not (ROOT / 'usr/bin' / (tool + EXE)).is_file():
                 raise ImportError('Missing bundled tool: ' + tool)
         code, formats = Runner().run(package.tool('7z', 'i'), capture=True)
         if code or 'Codec Load Error' in formats or 'Udf' not in formats:
             raise ImportError('Bundled ISO reader is missing UDF format support.')
         env = package.build_env(Path.home())
         compilers = {}
-        for name, tool in (('c', 'usr/lib/llvm-14/bin/clang'), ('cxx', 'usr/bin/x86_64-linux-gnu-g++-11'),
-                           ('cmake', 'usr/bin/cmake'), ('ninja', 'usr/bin/ninja')):
-            code, text = Runner().run([ROOT / 'usr/toolchain/sysroot' / tool, '--version'], env=env, capture=True)
+        if WINDOWS:
+            tools = package.windows_toolchain()[0]
+            build_tools = [(name, tools / (name + '.exe')) for name in ('clang', 'g++', 'cmake', 'ninja')]
+        else:
+            build_tools = [(name, ROOT / 'usr/toolchain/sysroot' / tool) for name, tool in (
+                ('c', 'usr/lib/llvm-14/bin/clang'), ('cxx', 'usr/bin/x86_64-linux-gnu-g++-11'),
+                ('cmake', 'usr/bin/cmake'), ('ninja', 'usr/bin/ninja'))]
+        for name, tool in build_tools:
+            code, text = Runner().run([tool, '--version'], env=env, capture=True)
             if code:
                 raise ImportError('Bundled build tool does not start: ' + name + '\n' + text[-800:])
             compilers[name] = text.splitlines()[0] if text else ''
@@ -93,7 +120,7 @@ def main():
                           'cpu': 'built locally with -march=native (SSE4.1 minimum)', 'toolchain': compilers,
                           'elf_sha256': package.meta['elf_sha256']}, indent=2))
         return
-    default_data = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'battride-war-port'
+    default_data, config_path = default_dirs()
     data = (args.data_dir or default_data).resolve()
     if args.import_only:
         data.mkdir(parents=True, exist_ok=True)
@@ -121,7 +148,6 @@ def main():
     gi.require_version('Adw', '1')
     from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
-    config_path = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'battride-war-port/settings.json'
     try:
         saved = json.loads(config_path.read_text())
     except (OSError, ValueError):
@@ -260,7 +286,8 @@ def main():
             page = Adw.PreferencesPage()
             about = Adw.PreferencesGroup(
                 title='Kamen Rider: Battride War',
-                description='Experimental Linux port  •  Japan / BLJS10220\n\n'
+                description=('Experimental Windows port' if WINDOWS else 'Experimental Linux port') +
+                            '  •  Japan / BLJS10220\n\n'
                             'Select your game ISO and press Play. The first launch downloads the official RPCS3 '
                             'build to read your disc, imports its files and builds the game for this computer '
                             '(15-60 minutes, once). Data, saves and logs stay in the data folder.')
@@ -362,7 +389,8 @@ def main():
                                        saved.get('gamemode', True) and self.gamemode_path)
             self.gamemode.set_sensitive(bool(self.gamemode_path))
             perf.add(self.gamemode)
-            page.add(perf)
+            if not WINDOWS:                  # MangoHud and GameMode are Linux tools
+                page.add(perf)
             for row in (self.mode, self.size, self.filter, self.scale):
                 row.connect('notify::selected', lambda *_: self.settings_changed())
             self.hud.switch.connect('notify::active', lambda *_: self.settings_changed())

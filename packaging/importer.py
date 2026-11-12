@@ -14,6 +14,24 @@ import urllib.error
 import urllib.request
 import uuid
 
+WINDOWS = os.name == 'nt'
+EXE = '.exe' if WINDOWS else ''
+# Windows paths stop at 260 characters unless long paths are enabled system-wide,
+# and the build nests about 155 more below the data folder (the SPU generator's
+# stage directories carry a 64-character hash).
+WINDOWS_DATA_PATH_MAX = 100
+
+
+def scratch_name(prefix):
+    """A temporary directory name: short on Windows, where every character counts."""
+    return prefix + (uuid.uuid4().hex[:8] if WINDOWS else uuid.uuid4().hex)
+
+
+def check_data_path(data):
+    if WINDOWS and len(str(data)) > WINDOWS_DATA_PATH_MAX:
+        raise ImportError('The data folder path is too long for Windows (%d characters, at most %d): choose a '
+                          'shorter one, for example C:\\Games\\Battride.' % (len(str(data)), WINDOWS_DATA_PATH_MAX))
+
 
 class ImportError(RuntimeError):
     pass
@@ -181,9 +199,26 @@ def display_env(display):
     return env
 
 
+def windows_cpu():
+    """(model, feature flags) on Windows: no /proc/cpuinfo there."""
+    import ctypes
+    import winreg
+    model = ''
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'HARDWARE\DESCRIPTION\System\CentralProcessor\0') as key:
+            model = winreg.QueryValueEx(key, 'ProcessorNameString')[0].strip()
+    except OSError:
+        pass
+    present = ctypes.windll.kernel32.IsProcessorFeaturePresent
+    return model, ' '.join(str(i) for i in range(64) if present(i))
+
+
 def cpu_identity():
     """The runner is built with -march=native: rebuild it if the data folder moves to another CPU."""
     model, flags = '', ''
+    if WINDOWS:
+        model, flags = windows_cpu()
+        return {'model': model, 'flags_sha256': hashlib.sha256(flags.encode()).hexdigest()}
     try:
         for line in Path('/proc/cpuinfo').read_text().splitlines():
             if line.startswith('model name') and not model:
@@ -195,10 +230,27 @@ def cpu_identity():
     return {'model': model, 'flags_sha256': hashlib.sha256(flags.encode()).hexdigest()}
 
 
+def windows_available_memory():
+    import ctypes
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [('length', ctypes.c_ulong), ('load', ctypes.c_ulong), ('total', ctypes.c_ulonglong),
+                    ('available', ctypes.c_ulonglong), ('total_page', ctypes.c_ulonglong),
+                    ('available_page', ctypes.c_ulonglong), ('total_virtual', ctypes.c_ulonglong),
+                    ('available_virtual', ctypes.c_ulonglong), ('available_extended', ctypes.c_ulonglong)]
+    status = MemoryStatus(length=ctypes.sizeof(MemoryStatus))
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        raise OSError('GlobalMemoryStatusEx failed')
+    return status.available
+
+
 def build_jobs():
-    cpus = len(os.sched_getaffinity(0))
+    cpus = os.cpu_count() if WINDOWS else len(os.sched_getaffinity(0))
     try:
-        available = int(re.search(r'MemAvailable:\s+(\d+) kB', Path('/proc/meminfo').read_text())[1]) * 1024
+        if WINDOWS:
+            available = windows_available_memory()
+        else:
+            available = int(re.search(r'MemAvailable:\s+(\d+) kB', Path('/proc/meminfo').read_text())[1]) * 1024
     except (OSError, TypeError, ValueError):
         available = 4 * 1024**3
     return max(1, min(cpus, (available - 1024**3) // BUILD_JOB_MEMORY))
@@ -217,7 +269,8 @@ def disc_entries(text):
         fields = dict(line.split(' = ', 1) for line in block.splitlines() if ' = ' in line)
         if 'Path' not in fields:
             continue
-        name = safe_name(fields['Path'])
+        # 7-Zip on Windows lists with its own separator; a disc path never has one.
+        name = safe_name(fields['Path'].replace('\\', '/') if WINDOWS else fields['Path'])
         if fields.get('Symbolic Link') or fields.get('Hard Link'):
             raise ImportError('Links in disc images are not supported')
         if name in entries:
@@ -236,7 +289,11 @@ class Runner:
         self.cancelled.set()
         with self.lock:
             p = self.current
-        if p and p.poll() is None:
+        if p and p.poll() is None and WINDOWS:
+            # The whole tree (a build runs ninja and its compilers); no signals here.
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(p.pid)], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+        elif p and p.poll() is None:
             try:
                 os.killpg(p.pid, signal.SIGTERM)
                 p.wait(timeout=2)
@@ -252,9 +309,12 @@ class Runner:
         """Run a tool in its own session; on_line receives each output line (also logged)."""
         if self.cancelled.is_set():
             raise ImportError('Operation cancelled')
+        # A group of its own, and on Windows no console window for each tool.
+        group = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
+                 if WINDOWS else {'start_new_session': True})
         p = subprocess.Popen([str(x) for x in args], env=env, cwd=cwd,
                              stdout=subprocess.PIPE if capture or on_line else (log or subprocess.DEVNULL),
-                             stderr=subprocess.STDOUT, start_new_session=True)
+                             stderr=subprocess.STDOUT, **group)
         with self.lock:
             self.current = p
         if self.cancelled.is_set():
@@ -287,7 +347,13 @@ class Package:
         self.manifest = json.loads((self.root / 'app/disc-manifest.json').read_text())
 
     def tool(self, name, *args):
-        return [self.root / 'usr/bin' / name, *args]
+        return [self.root / 'usr/bin' / (name + EXE), *args]
+
+    def windows_toolchain(self):
+        """(bin directory, Python) of the MSYS2 UCRT64 toolchain named in usr/toolchain/toolchain.json,
+        relative to the package or absolute."""
+        info = json.loads((self.root / 'usr/toolchain/toolchain.json').read_text())
+        return (self.root / 'usr/toolchain' / info['bin']).resolve(), (self.root / 'usr/toolchain' / info['python']).resolve()
 
     def helper_env(self, stage):
         # RPCS3's own AppRun sets up its libraries (and its checkrt C++ runtime
@@ -309,7 +375,8 @@ class Package:
         """
         info = self.meta['rpcs3']
         base = Path(data) / 'tools' / ('rpcs3-' + info['version'])
-        apprun = base / 'squashfs-root/AppRun'
+        # Windows: the official .7z, which runs portable from where it is unpacked.
+        apprun = base / ('bin/rpcs3.exe' if WINDOWS else 'squashfs-root/AppRun')
         if apprun.is_file() and (base / 'verified').is_file():
             return apprun
         shutil.rmtree(base, ignore_errors=True)
@@ -328,10 +395,13 @@ class Package:
                 raise ImportError('The selected RPCS3 file is not the expected build ' + info['file'])
             status('Downloading the official RPCS3 build (%d MB) from GitHub...' % (info['size'] >> 20))
             download(info['url'], image, info['sha256'], info['size'], runner.cancelled, status)
-        image.chmod(0o755)
         status('Unpacking RPCS3...')
-        # --appimage-extract needs no FUSE.
-        code, _ = runner.run([image, '--appimage-extract'], cwd=base, log=log)
+        if WINDOWS:
+            code, _ = runner.run(self.tool('7z', 'x', '-y', '-bd', '-o' + str(base / 'bin'), '--', image), log=log)
+        else:
+            image.chmod(0o755)
+            # --appimage-extract needs no FUSE.
+            code, _ = runner.run([image, '--appimage-extract'], cwd=base, log=log)
         image.unlink()
         if code or not apprun.is_file():
             raise ImportError('RPCS3 could not be unpacked. See import.log.')
@@ -356,6 +426,7 @@ class Package:
         iso, data = Path(iso).resolve(), Path(data).resolve()
         if not iso.is_file():
             raise ImportError('Select a readable ISO file')
+        check_data_path(data)
         data.mkdir(parents=True, exist_ok=True)
         initial = iso.stat()
         identity = {'path': str(iso), 'bytes': initial.st_size, 'mtime_ns': initial.st_mtime_ns}
@@ -377,7 +448,7 @@ class Package:
         required = sum(x['size'] for x in self.manifest.values()) + 2 * 1024**3
         if free < required:
             raise ImportError('Not enough free space. Allow at least 5 GB for import and game data.')
-        stage = data / ('.import-' + uuid.uuid4().hex)
+        stage = data / scratch_name('.i-' if WINDOWS else '.import-')
         game = stage / 'game'
         game.mkdir(parents=True)
         committed = []
@@ -424,7 +495,8 @@ class Package:
             runner.run(self.rpcs3(apprun, '--installfw', game / pup), env=self.helper_env(stage), log=log)
             fw = stage / 'firmware/dev_flash/sys/external'
             fw.mkdir(parents=True)
-            source = stage / 'rpcs3-config/rpcs3/dev_flash/sys/external'
+            # The Windows build keeps its dev_flash next to the executable.
+            source = (apprun.parent if WINDOWS else stage / 'rpcs3-config/rpcs3') / 'dev_flash/sys/external'
             for name, expected in self.meta['codecs'].items():
                 p = source / name
                 if not p.is_file() or digest(p) != expected:
@@ -474,6 +546,12 @@ class Package:
                     'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'CPATH', 'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH',
                     'LIBRARY_PATH', 'GCC_EXEC_PREFIX', 'COMPILER_PATH', 'MAKEFLAGS', 'PS3_DEV_FLASH'):
                 env.pop(key, None)
+        if WINDOWS:
+            # MSYS2 UCRT64 first, so cmake, ninja, clang and g++ are the toolchain's own.
+            tools, _ = self.windows_toolchain()
+            env['PATH'] = os.pathsep.join([str(tools), str(self.root / 'usr/bin'), env.get('PATH', '')])
+            env.update(PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1', PS3_DEV_FLASH=str(Path(data) / 'firmware/dev_flash'))
+            return env
         toolchain = self.root / 'usr/toolchain'
         env['PATH'] = os.pathsep.join([str(toolchain / 'sysroot/usr/bin'), str(self.root / 'usr/bin'),
                                        env.get('PATH', '/usr/bin:/bin')])
@@ -501,7 +579,8 @@ class Package:
             h = hashlib.sha256()
             port = self.root / 'usr/share/battride/port'
             for f in sorted(p for p in port.rglob('*') if p.is_file()) if port.is_dir() else ():
-                h.update(str(f.relative_to(port)).encode() + b'\0' + f.read_bytes() + b'\0')
+                # as_posix: the same hash from MSYS2's Python ('/') and Windows' ('\').
+                h.update(f.relative_to(port).as_posix().encode() + b'\0' + f.read_bytes() + b'\0')
             self._sources_sha256 = h.hexdigest()
         return self._sources_sha256
 
@@ -514,8 +593,8 @@ class Package:
         """The game built on this computer, or None when it must be (re)built."""
         out = Path(data) / 'runner'
         try:
-            if json.loads((out / 'build.json').read_text()) == self.build_identity() and (out / 'game-runner').is_file():
-                return out / 'game-runner'
+            if json.loads((out / 'build.json').read_text()) == self.build_identity() and (out / ('game-runner' + EXE)).is_file():
+                return out / ('game-runner' + EXE)
         except (OSError, ValueError):
             pass
         return None
@@ -535,10 +614,11 @@ class Package:
         if shutil.disk_usage(data).free < 4 * 1024**3:
             raise ImportError('Building the game needs about 4 GB of free space in the data folder.')
         jobs = build_jobs()
-        python = self.root / 'usr/bin/python3'
+        python = self.windows_toolchain()[1] if WINDOWS else self.root / 'usr/bin/python3'
         sdk = self.root / 'usr/share/battride/ps3recomp'
         env = self.build_env(data)
-        work = data / ('.build-' + uuid.uuid4().hex)
+        check_data_path(data)
+        work = data / scratch_name('.b-' if WINDOWS else '.build-')
         try:
             port = work / 'port'
             shutil.copytree(self.root / 'usr/share/battride/port', port)
@@ -557,13 +637,21 @@ class Package:
             if profiles:
                 profiles = place_profiles(profiles, work / 'pgo', sdk)
             lines = []
-            code, _ = runner.run([self.root / 'usr/toolchain/sysroot/usr/bin/cmake', '-S', port, '-B', build,
-                                  '-G', 'Ninja', '-DCMAKE_TOOLCHAIN_FILE=' + str(self.root / 'usr/toolchain/toolchain.cmake'),
+            if WINDOWS:
+                # The windows-vulkan preset's settings, with the toolchain's compilers on PATH.
+                cmake = self.windows_toolchain()[0] / 'cmake.exe'
+                configure = [cmake, '-S', port, '-B', build, '-G', 'Ninja', '-DCMAKE_C_COMPILER=clang',
+                             '-DCMAKE_CXX_COMPILER=g++']
+            else:
+                cmake = self.root / 'usr/toolchain/sysroot/usr/bin/cmake'
+                configure = [cmake, '-S', port, '-B', build, '-G', 'Ninja',
+                             '-DCMAKE_TOOLCHAIN_FILE=' + str(self.root / 'usr/toolchain/toolchain.cmake'),
+                             '-DPORT_PORTABLE=ON', '-Dglslang_DIR=' + str(port / 'packaging/glslang-compat')]
+            code, _ = runner.run([*configure,
                                   '-DCMAKE_BUILD_TYPE=Debug', '-DCMAKE_C_FLAGS_DEBUG=-O2', '-DCMAKE_CXX_FLAGS_DEBUG=-O2',
                                   '-DPORT_ENABLE_SPU=ON', '-DPS3RECOMP_RSX_VULKAN=ON', '-DPORT_MARCH=native',
-                                  '-DPORT_PORTABLE=ON', '-DPS3RECOMP_DIR=' + str(sdk),
+                                  '-DPS3RECOMP_DIR=' + str(sdk),
                                   '-DPython3_EXECUTABLE=' + str(python),
-                                  '-Dglslang_DIR=' + str(port / 'packaging/glslang-compat'),
                                   *(['-DPORT_PGO=use', '-DPORT_PGO_DIR=' + str(profiles)] if profiles else [])],
                                  env=env, log=log, on_line=lines.append)
             if code:
@@ -579,11 +667,23 @@ class Package:
                     status('Step 2 of 2: compiling the game for this CPU (%d jobs): %s / %s files'
                            % (jobs, match[1], match[2]))
             status('Step 2 of 2: compiling the game for this CPU (%d jobs). This takes 15-60 minutes...' % jobs)
-            code, _ = runner.run([self.root / 'usr/toolchain/sysroot/usr/bin/cmake', '--build', build, '-j', jobs],
+            code, _ = runner.run([cmake, '--build', build, '-j', jobs],
                                  env=env, log=log, on_line=compiled)
             if code:
                 raise ImportError('Compiling the game failed. See build.log.')
             out = data / 'runner'
+            if WINDOWS:
+                # The game finds its DLLs beside it: copy the toolchain's ones it imports.
+                (out / 'game-runner.exe').unlink(missing_ok=True)
+                out.mkdir(parents=True, exist_ok=True)
+                for dll in self.windows_dlls(build / 'kamenriderbattridewarsport.exe', env):
+                    shutil.copy2(dll, out / dll.name)
+                tmp = out / 'game-runner.tmp.exe'
+                shutil.copy2(build / 'kamenriderbattridewarsport.exe', tmp)
+                tmp.replace(out / 'game-runner.exe')
+                (out / 'build.json').write_text(json.dumps(self.build_identity(), indent=2))
+                status('Game built for this computer.')
+                return out / 'game-runner.exe'
             shutil.rmtree(out / 'lib', ignore_errors=True)
             (out / 'lib').mkdir(parents=True)
             for name in self.meta['game_libs']:
@@ -604,6 +704,21 @@ class Package:
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+    def windows_dlls(self, exe, env):
+        """The toolchain DLLs exe imports, directly or through each other (objdump -p)."""
+        tools, _ = self.windows_toolchain()
+        found, todo = {}, [Path(exe)]
+        while todo:
+            text = subprocess.run([str(tools / 'objdump.exe'), '-p', str(todo.pop())], capture_output=True,
+                                  text=True, env=env, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+            for name in re.findall(r'DLL Name: (\S+)', text):
+                path = tools / name
+                # The Vulkan loader must be the GPU driver's, never a copy.
+                if name.lower() not in found and path.is_file() and not name.lower().startswith('vulkan-1'):
+                    found[name.lower()] = path
+                    todo.append(path)
+        return sorted(found.values())
+
     def game_env(self, data, logs, mangohud=False, display=None, controls=None):
         env = os.environ.copy()
         # Keep developer diagnostics and automated controller input out of the
@@ -612,10 +727,14 @@ class Package:
             if k.startswith(('PAD_', 'PORT_', 'PPU_', 'SPU_', 'YDKJ_', 'GCM_', 'RSX_')) or k in (
                     'LD_LIBRARY_PATH', 'LD_PRELOAD', 'PS3_VFS_ROOT', 'PS3_GAMEDATA_ROOT', 'PS3_DEV_FLASH'):
                 env.pop(k, None)
-        # The game finds its libraries through its RPATH (runner/lib).
+        # The game finds its libraries through its RPATH (runner/lib); on Windows
+        # beside it, and ffmpeg/ffprobe for the movies in usr/bin.
+        if WINDOWS:
+            env['PATH'] = os.pathsep.join([str(self.root / 'usr/bin'), env.get('PATH', '')])
         env.setdefault('VK_LOADER_DEBUG', 'error,warn')
-        env.update(PS3_VFS_ROOT=str(data / 'game'), PS3_GAMEDATA_ROOT=str(data / 'gamedata'),
-                   PS3_DEV_FLASH=str(data / 'firmware/dev_flash'), PS3RECOMP_VK_GUEST_PROGRAMS='1',
+        path = Path.as_posix if WINDOWS else str       # the runner's VFS joins with '/'
+        env.update(PS3_VFS_ROOT=path(Path(data) / 'game'), PS3_GAMEDATA_ROOT=path(Path(data) / 'gamedata'),
+                   PS3_DEV_FLASH=path(Path(data) / 'firmware/dev_flash'), PS3RECOMP_VK_GUEST_PROGRAMS='1',
                    PS3RECOMP_VK_WINDOW='1', PORT_GCM_EXPAND_BUFFERS='0',
                    PORT_FRAME_TIMES=str(logs / 'frames.csv'))
         env.update(display_env(display or {}))

@@ -13,7 +13,9 @@ completed by hand, with the result screens, a save and the return to the menus.
 Audio, a controller (XInput), keyboard and mouse, windowed and borderless
 fullscreen (Alt+Enter), internal resolution 1x/2x/4x and FSR 1 work.
 
-Not done: the launcher and importer, packaging, testing on other machines, and
+The GTK 4 launcher imports the ISO and builds the game on Windows from a
+package that still uses the local MSYS2 (stage 5). Not done: a self-contained
+package, testing on other machines, and
 a build of this branch on Linux (every change is behind `_WIN32`, `WIN32` or
 `__MINGW32__`, and was checked by reading, not by building there).
 
@@ -149,20 +151,39 @@ MSYS2 UCRT64 on the reference laptop (no Wine cross-build was needed).
 - [ ] The `PORT_PROFILE` sampler and huge pages (`SeLockMemoryPrivilege`) are
   not ported.
 
-### 5. Launcher and importer: not started
+### 5. Launcher and importer: done, except the bundled toolchain
 
-- A Windows entry in `rpcs3.json` (the build above): the `.7z` runs portable, so
-  `dev_flash` and the decrypted EBOOT land in different places.
-- Windows `7z.exe` and `ffmpeg.exe`.
-- CPU check via `IsProcessorFeaturePresent` instead of `/proc/cpuinfo`.
-- Data in `%LOCALAPPDATA%\battride-war-port`, settings in `%APPDATA%`.
-- Process control with `CREATE_NEW_PROCESS_GROUP` instead of signals (Ctrl+Break
-  works for the PGO training build); drop the `patchelf` step.
-- Port `graphics_probe.c`.
-- UI: GTK4 from MSYS2 (keeps the code) or another toolkit — to decide.
-- Bundle a minimal toolchain so the game is built on the player's computer; the
-  runner is never shipped. Shipped PGO profiles need the build directory problem
-  above solved first.
+The launcher keeps its GTK 4 / libadwaita interface (MSYS2's `gtk4`,
+`libadwaita` and `python-gobject`). `scripts/build_windows_package.py` assembles
+the AppImage's layout for Windows, and the launcher, run from that package,
+imported the ISO and built the game end to end (42 minutes, 2 jobs); the built
+game then started with a plain Windows `PATH`. `tests/test_importer.py` passes
+there.
+
+- [x] RPCS3 for Windows (`packaging/rpcs3-windows.json`): downloaded and
+  SHA-256 checked, unpacked with 7-Zip, run portable (its `dev_flash` beside
+  `rpcs3.exe`).
+- [x] `7z.exe`, `ffmpeg.exe` and `ffprobe.exe` from the package; 7-Zip lists
+  disc paths with `\`, turned back into `/`.
+- [x] CPU check and identity via `IsProcessorFeaturePresent` and the registry;
+  build jobs from `GlobalMemoryStatusEx`.
+- [x] Data in `%LOCALAPPDATA%\battride-war-port`, settings in
+  `%APPDATA%\battride-war-port`; the file manager is Explorer.
+- [x] Tools in a process group of their own without a console window; Stop
+  ends the whole tree (`taskkill /T`). No `patchelf`: the toolchain DLLs the game
+  imports (found with `objdump -p`, never `vulkan-1.dll`) are copied beside
+  `runner\game-runner.exe`.
+- [x] `graphics-probe.exe`.
+- [x] Paths: without long path support, Windows stops at 260 characters and the
+  build nests about 155 below the data folder (the SPU generator's stage folders
+  carry a 64-character hash), so the data folder may have at most 100: the
+  launcher says so before starting, and its temporary folders have short names.
+- [x] The build identity hashes the sources' paths with `/`, so MSYS2's Python
+  and the Windows one agree and a built game is not rebuilt for nothing.
+- [ ] The package points at this computer's MSYS2 (`usr/toolchain/toolchain.json`)
+  and at a Python with the SDK tools' requirements: bundling them, and GTK with
+  its icons and schemas, is stage 6. MangoHud and GameMode are hidden (Linux
+  tools). Shipped PGO profiles need the build directory problem above solved.
 
 ### 6. Packaging and licences: not started
 
