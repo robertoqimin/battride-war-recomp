@@ -6,6 +6,8 @@ This repository contains the port's code, configuration, tests and instructions.
 
 **Download:** the [latest release](https://github.com/robertoqimin/battride-war-recomp/releases/latest) (v0.5.2) is an AppImage that imports your ISO, translates your own EBOOT and compiles the game on your computer. See [System requirements](#system-requirements-appimage).
 
+**Windows:** a native Windows build is in progress on the `windows` branch. The opening mission plays through there, built from source with MSYS2; there is no Windows release yet. See [docs/WINDOWS.md](docs/WINDOWS.md).
+
 The project was called **Battride War Port** (repository `battride-war-port`) until v0.5.0. Old links redirect here, and the data folder keeps its old name, `~/.local/share/battride-war-port`, so existing installs and saves carry over.
 
 ## Current status (October 26, 2026)
