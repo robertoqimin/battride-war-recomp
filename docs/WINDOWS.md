@@ -70,13 +70,23 @@ Paths are passed with `/`: the runner derives the VFS root from the EBOOT path.
 Do not stop the game during its first data installation: the half-installed
 data then fails with `BROKEN_EXIT_GAMEDATA`; delete `game/game` and start again.
 
-**PGO:** configure another build directory with `-DPORT_PGO=generate`, play
-with it (the instrumented build runs at a few frames per second), and end the
-game with **Ctrl+Break** in its console: the training build writes its profiles
-on `SIGBREAK` as on `SIGTERM`. Then configure the same directory with
-`-DPORT_PGO=use` and build again. On Windows the `.gcda` names keep the build
-directory's absolute path, so profiles only apply in the directory that made
-them.
+**PGO and the benchmark:** `scripts/pgo_train.py` and `scripts/bench_combat.py`
+run on Windows from the UCRT64 shell, with ffmpeg on `PATH` (no per-thread CPU,
+`--pin` or `--stacks` there: they read `/proc`):
+
+```bash
+cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=generate
+cmake --build build-pgo -j 2
+python scripts/pgo_train.py --build build-pgo
+cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=use
+cmake --build build-pgo -j 3
+python scripts/bench_combat.py --binary build-pgo/kamenriderbattridewarsport.exe --runs 3
+```
+
+A training session ends with Ctrl+Break to the game's process group, which the
+training build takes as `SIGTERM` (`SIGBREAK` in `main.cpp`). On Windows the
+`.gcda` names keep the build directory's absolute path, so profiles only apply
+in the directory that made them.
 
 ## What was changed, and why
 
@@ -134,8 +144,8 @@ MSYS2 UCRT64 on the reference laptop (no Wine cross-build was needed).
   at 1,027 draws), cause not found; shader compilation on first use is a
   suspect, not confirmed.
 - [ ] The heaviest fights, 38-44 fps against about 45 on Linux.
-- [ ] `bench_combat.py` and `pgo_train.py` for Windows in `scripts/` (they read
-  `/proc` and send `SIGTERM`).
+- [x] `bench_combat.py` and `pgo_train.py` run on Windows (one benchmark run
+  and one training session checked).
 - [ ] The `PORT_PROFILE` sampler and huge pages (`SeLockMemoryPrivilege`) are
   not ported.
 

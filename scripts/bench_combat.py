@@ -17,6 +17,9 @@ usage: bench_combat.py --binary <game executable> [--runs 3] [--seconds 60]
                        [--label name] [--json out.json] [-- extra ENV=VALUE ...]
 The game, firmware and save data come from the repository's game/, firmware/
 and gamedata/ folders; the save is copied, never written.
+
+On Windows, run it from the MSYS2 UCRT64 shell (the game's DLLs) with ffmpeg on
+PATH. There is no /proc there: no per-thread CPU, --pin or --stacks.
 """
 import argparse
 import json
@@ -32,12 +35,25 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 COMBAT_DRAWS = 550
-CLK_TCK = os.sysconf('SC_CLK_TCK')
+WINDOWS = os.name == 'nt'
+CLK_TCK = 100 if WINDOWS else os.sysconf('SC_CLK_TCK')
+# The game in a process group of its own, so the whole group can be stopped.
+NEW_GROUP = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {'start_new_session': True}
+
+
+def kill_group(proc):
+    if WINDOWS:
+        proc.kill()
+    else:
+        os.killpg(proc.pid, signal.SIGKILL)
 
 
 def thread_times(pid):
     """{tid: (name, utime+stime ticks)} for every thread of pid."""
     out = {}
+    if WINDOWS:
+        return out
+
     for task in Path('/proc/%d/task' % pid).iterdir():
         try:
             stat = (task / 'stat').read_text()
@@ -67,7 +83,7 @@ def run_once(binary, seconds, extra_env, work, stacks=0, pin=0, prefix=(), dump=
     log_path = work / 'run.log'
     with log_path.open('w') as log:
         proc = subprocess.Popen([*prefix, str(binary), str(ROOT / 'game/EBOOT.ELF')], cwd=ROOT, env=env,
-                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                                stdout=log, stderr=subprocess.STDOUT, **NEW_GROUP)
         try:
             start, next_press = time.monotonic(), time.monotonic() + 15
             while True:
@@ -133,7 +149,7 @@ def run_once(binary, seconds, extra_env, work, stacks=0, pin=0, prefix=(), dump=
             t1_cpu, wall = thread_times(proc.pid), time.monotonic() - t0
         finally:
             if proc.poll() is None:
-                os.killpg(proc.pid, signal.SIGKILL)
+                kill_group(proc)
                 proc.wait()
     # Frame log times are from the game's own start; the window is the last
     # `seconds` of what it wrote before the kill.

@@ -11,6 +11,9 @@ the translated game code: keep them private like the generated sources.
 usage: pgo_train.py --build <generate build dir> [--sessions 2]
 The game, firmware and save data are taken from the repository's game/,
 firmware/ and gamedata/ folders, as for run-vulkan.sh.
+
+On Windows, run it from the MSYS2 UCRT64 shell with ffmpeg on PATH. A session
+ends with Ctrl+Break there, which the training build takes as SIGTERM.
 """
 import argparse
 import hashlib
@@ -26,6 +29,24 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 COMBAT_DRAWS = 550       # draws per frame once the first fight is on screen
+WINDOWS = os.name == 'nt'
+# The game in a process group of its own: Ctrl+Break reaches only that group.
+NEW_GROUP = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {'start_new_session': True}
+
+
+def kill_group(proc):
+    if WINDOWS:
+        proc.kill()
+    else:
+        os.killpg(proc.pid, signal.SIGKILL)
+
+
+def stop_group(proc):
+    """What makes a training build write its profiles and exit (main.cpp)."""
+    if WINDOWS:
+        os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
+    else:
+        os.killpg(proc.pid, signal.SIGTERM)
 
 
 def cache_value(build, name):
@@ -47,7 +68,7 @@ def session(binary, work, seconds):
     log_path = work / 'run.log'
     with log_path.open('w') as log:
         proc = subprocess.Popen([str(binary), str(ROOT / 'game/EBOOT.ELF')], cwd=ROOT, env=env,
-                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                                stdout=log, stderr=subprocess.STDOUT, **NEW_GROUP)
         trained = False
         try:
             # The instrumented build runs at a few frames per second: be patient.
@@ -103,14 +124,14 @@ def session(binary, work, seconds):
             if proc.poll() is None and not trained:
                 # A session that never reached the fight must not add its
                 # menu counts to the profiles: SIGKILL writes nothing.
-                os.killpg(proc.pid, signal.SIGKILL)
+                kill_group(proc)
                 proc.wait()
             elif proc.poll() is None:
-                os.killpg(proc.pid, signal.SIGTERM)      # writes the profiles
+                stop_group(proc)                         # writes the profiles
                 try:
                     proc.wait(timeout=300)
                 except subprocess.TimeoutExpired:
-                    os.killpg(proc.pid, signal.SIGKILL)
+                    kill_group(proc)
                     proc.wait()
                     raise SystemExit('The training build did not exit after SIGTERM; profiles may be incomplete.')
 
@@ -125,7 +146,7 @@ def main():
     if cache_value(build, 'PORT_PGO') != 'generate':
         raise SystemExit('Configure the build with -DPORT_PGO=generate first.')
     profiles = Path(cache_value(build, 'PORT_PGO_DIR'))
-    binary = build / 'kamenriderbattridewarsport'
+    binary = build / ('kamenriderbattridewarsport.exe' if WINDOWS else 'kamenriderbattridewarsport')
     spec = json.loads((ROOT / 'recompile.json').read_text())
     elf = hashlib.sha256((ROOT / 'game/EBOOT.ELF').read_bytes()).hexdigest()
     if elf != spec['eboot_sha256']:
