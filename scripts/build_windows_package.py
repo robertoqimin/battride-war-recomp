@@ -121,9 +121,9 @@ for n in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
     copy(P / n, S / 'usr/share/licenses/port' / n)
 
 # Start the launcher with the toolchain's Python and GTK, without a console window.
-(S / 'BattrideWarRecomp.cmd').write_text(
+(S / 'BattrideWarRecomp.cmd').write_bytes((
     '@echo off\r\n'
     'set "PORT_APPDIR=%~dp0."\r\n'
     'set "PATH={0};%~dp0usr\\bin;%PATH%"\r\n'
-    'start "" "{0}\\pythonw.exe" "%~dp0app\\launcher.py" %*\r\n'.format(tools))
+    'start "" "{0}\\pythonw.exe" "%~dp0app\\launcher.py" %*\r\n').format(tools).encode())
 print('Package:', S, '(%d disc files in the manifest)' % len(manifest))
