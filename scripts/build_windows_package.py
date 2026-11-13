@@ -15,7 +15,7 @@ Without it, usr/toolchain/toolchain.json points at the local installation and at
 --python, and the package runs only on the computer that built it.
 
 usage: build_windows_package.py --stage <new dir> --sevenzip-dir <dir with 7z.exe and 7z.dll>
-       --ffmpeg-dir <dir with ffmpeg.exe and ffprobe.exe> (--bundle | --python <python>)
+       (--bundle | --python <python> --ffmpeg-dir <dir with ffmpeg.exe and ffprobe.exe>)
        [--pgo <profiles from scripts/pgo_train.py>] [--toolchain C:/msys64/ucrt64] [--sdk ../ps3recomp]
 
 With --pgo the package carries GCC profiles that the player's build applies
@@ -27,6 +27,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -35,7 +36,7 @@ P = Path(__file__).resolve().parents[1]
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument('--stage', type=Path, required=True)
 ap.add_argument('--sevenzip-dir', type=Path, required=True)
-ap.add_argument('--ffmpeg-dir', type=Path, required=True)
+ap.add_argument('--ffmpeg-dir', type=Path, help="FFmpeg for the movies (without --bundle, which takes MSYS2's)")
 ap.add_argument('--python', type=Path, help='Python with the SDK tools\' requirements (without --bundle)')
 ap.add_argument('--bundle', action='store_true', help='copy the MSYS2 toolchain, GTK and Python into the package')
 ap.add_argument('--pgo', type=Path, help='GCC profiles and profile.json from scripts/pgo_train.py')
@@ -44,12 +45,14 @@ ap.add_argument('--sdk', type=Path, default=P.parent / 'ps3recomp')
 args = ap.parse_args()
 if args.bundle == bool(args.python):
     ap.error('give either --bundle or --python')
+if args.bundle == bool(args.ffmpeg_dir):
+    ap.error('--ffmpeg-dir goes with --python; --bundle takes FFmpeg from MSYS2')
 # What the package needs from MSYS2 UCRT64; pacman adds their dependencies.
 BUNDLE = ('gcc', 'clang', 'lld', 'binutils', 'cmake', 'ninja', 'pkgconf', 'SDL2', 'vulkan-headers', 'glslang',
           'spirv-tools', 'python', 'python-capstone', 'python-pycryptodome', 'python-gobject', 'gtk4',
-          'libadwaita', 'adwaita-icon-theme')
+          'libadwaita', 'adwaita-icon-theme', 'ffmpeg')
 # Not needed to build or to show the launcher.
-SKIP_DIRS = ('share/doc/', 'share/man/', 'share/info/', 'share/gtk-doc/', 'share/locale/', 'share/licenses/')
+SKIP_DIRS = ('share/doc/', 'share/man/', 'share/info/', 'share/gtk-doc/', 'share/locale/')
 S = args.stage.resolve()
 if S.exists():
     raise SystemExit('Choose a new stage directory; existing files are preserved.')
@@ -97,8 +100,10 @@ for patch in sorted((P / 'patches/ps3recomp').glob('*.patch')):
 # 7-Zip, FFmpeg, and the Vulkan/window check with the SDL2 DLLs it needs.
 for n in ('7z.exe', '7z.dll'):
     copy(args.sevenzip_dir / n, S / 'usr/bin' / n)
-for n in ('ffmpeg.exe', 'ffprobe.exe'):
-    copy(args.ffmpeg_dir / n, S / 'usr/bin' / n)
+copy(args.sevenzip_dir / 'License.txt', S / 'usr/share/licenses/7zip/License.txt')
+if args.ffmpeg_dir:
+    for n in ('ffmpeg.exe', 'ffprobe.exe'):
+        copy(args.ffmpeg_dir / n, S / 'usr/bin' / n)
 env = {**os.environ, 'PATH': os.pathsep.join([str(tools), os.environ.get('PATH', '')])}
 subprocess.run([str(tools / 'gcc.exe'), '-O2', '-msse4.1', '-DSDL_MAIN_HANDLED', str(P / 'packaging/graphics_probe.c'),
                 '-I' + str(args.toolchain / 'include/SDL2'), '-o', str(S / 'usr/bin/graphics-probe.exe'),
@@ -120,17 +125,19 @@ if args.bundle:
     # below usr/toolchain/ucrt64 as below the MSYS2 ucrt64 directory.
     pacman = Path(args.toolchain).resolve().parent / 'usr/bin/pacman.exe'
     msys_root = Path(args.toolchain).resolve().parent
-    todo, packages = ['mingw-w64-ucrt-x86_64-' + n for n in BUNDLE], set()
+    todo, seen, packages = ['mingw-w64-ucrt-x86_64-' + n for n in BUNDLE], set(), set()
     while todo:
         name = todo.pop()
-        if name in packages:
+        if name in seen:
             continue
+        seen.add(name)
         info = subprocess.run([str(pacman), '-Qi', name], capture_output=True, text=True, check=True).stdout
-        packages.add(name)
+        # A dependency may name what a package provides (fc-libs is fontconfig's): keep the package.
+        packages.add(next(l.split(':', 1)[1].strip() for l in info.splitlines() if l.startswith('Name')))
         depends = next((l.split(':', 1)[1] for l in info.splitlines() if l.startswith('Depends On')), '')
         for dep in depends.split():
             dep = dep.split('>')[0].split('<')[0].split('=')[0]
-            if dep.startswith('mingw-w64-ucrt-x86_64-') and dep not in packages:
+            if dep.startswith('mingw-w64-ucrt-x86_64-') and dep not in seen:
                 todo.append(dep)
     copied, size = 0, 0
     for name in sorted(packages):
@@ -157,7 +164,16 @@ if args.bundle:
                 ['gtk4-update-icon-cache', '-q', '-f', '-t', u / 'share/icons/hicolor'],
                 ['update-mime-database', u / 'share/mime']):
         subprocess.run([str(u / 'bin' / (cmd[0] + '.exe')), *map(str, cmd[1:])], check=True, env=hook_env)
-    (S / 'usr/toolchain/packages.txt').write_text('\n'.join(sorted(packages)) + '\n')
+    # Name, version and source package of each, for scripts/collect_windows_sources.py.
+    listed = []
+    for name in sorted(packages):
+        desc = next((msys_root / 'var/lib/pacman/local').glob(name + '-[0-9]*/desc'), None)
+        fields = dict(re.findall(r'%([A-Z]+)%\n([^\n]*)', desc.read_text(encoding='utf-8'))) if desc else {}
+        if fields.get('NAME') != name:
+            raise SystemExit('pacman database entry not found for ' + name)
+        listed.append({'name': name, 'version': fields['VERSION'], 'base': fields.get('BASE', name),
+                       'license': fields.get('LICENSE', '')})
+    (S / 'usr/toolchain/packages.json').write_text(json.dumps(listed, indent=1) + '\n')
     print('Toolchain: %d MSYS2 packages, %d files, %.0f MB' % (len(packages), copied, size / 1e6), flush=True)
     toolchain = {'bin': 'ucrt64/bin', 'python': 'ucrt64/bin/python.exe'}
 else:

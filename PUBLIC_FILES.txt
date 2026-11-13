@@ -78,6 +78,8 @@ third_party/SDL_GameControllerDB/LICENSE
 third_party/SDL_GameControllerDB/gamecontrollerdb.txt
 vulkan_bridge.c
 docs/APPIMAGE.md
+docs/WINDOWS.md
+docs/WINDOWS_PACKAGE.md
 packaging/build-image/Containerfile
 packaging/glslang-compat/glslangConfig.cmake
 packaging/glslang-compat/include/glslang/Public/ResourceLimits.h
@@ -91,6 +93,7 @@ scripts/build_fsr1_shaders.py
 scripts/build_appimage.py
 scripts/build_windows_package.py
 scripts/collect_sources.py
+scripts/collect_windows_sources.py
 tests/test_importer.py
 tests/test_input_bridge.c
 tests/test_input_bridge.sh

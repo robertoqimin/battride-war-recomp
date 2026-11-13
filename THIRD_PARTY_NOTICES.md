@@ -64,6 +64,16 @@ The port's own code (MIT) and the ps3recomp SDK at the pinned commit (MIT, inclu
 
 The game executable that the AppImage builds on the player's computer incorporates the ATRAC3 decoder, SDL2 and the static glslang/SPIRV-Tools libraries; it is produced locally and is never distributed.
 
+## Windows package
+
+The Windows package (`scripts/build_windows_package.py --bundle`, see [docs/WINDOWS.md](docs/WINDOWS.md)) also contains no game code or assets, and the same kind of GCC optimization profiles as the AppImage.
+
+Its third-party binaries are MSYS2 UCRT64 packages, redistributed as MSYS2 built them: the toolchain (GCC 16, binutils, the MinGW-w64 runtime and winpthreads, Clang/LLVM, CMake, Ninja), Python with capstone, pycryptodome and PyGObject, GTK 4, libadwaita and GLib, SDL2, glslang and SPIRV-Tools, FFmpeg, and every package they depend on. `usr/toolchain/packages.json` lists each package with its exact version, MSYS2 source package and licence; each package's licence files are kept under `usr/toolchain/ucrt64/share/licenses/`. The SDL2, MinGW runtime and C++ library DLLs beside `usr/bin/graphics-probe.exe` and the built game come from the same packages. 7-Zip 26.05 (`usr/bin/7z.exe`, `7z.dll`; LGPL-2.1 with the unRAR restriction) keeps its licence in `usr/share/licenses/7zip/License.txt`.
+
+**Corresponding source.** A release that carries the Windows package also carries a sources tar from `scripts/collect_windows_sources.py`: the MSYS2 source package (PKGBUILD, patches and upstream source) of exactly each bundled version, from https://repo.msys2.org/mingw/sources/, and the 7-Zip source, with a `SOURCES.md` index.
+
+**RPCS3 is not redistributed** on Windows either: the launcher downloads the official Windows build pinned in `packaging/rpcs3-windows.json` (the same RPCS3 version), checks its SHA-256, uses it as on Linux, and deletes it.
+
 ## Game and firmware
 
 Kamen Rider: Battride War and its assets are not part of this source package. There is no affiliation with or endorsement by the game's rights holders. Sony firmware, `.pic` codecs, keys, saves, the game ELF, and complete generated PPU/SPU sources are local data and are not covered by this repository's license.

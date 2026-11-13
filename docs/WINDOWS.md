@@ -14,9 +14,10 @@ Audio, a controller (XInput), keyboard and mouse, windowed and borderless
 fullscreen (Alt+Enter), internal resolution 1x/2x/4x and FSR 1 work.
 
 The GTK 4 launcher imports the ISO and builds the game on Windows from a
-self-contained package that carries its own MSYS2 subset (stage 5). Not done:
-an installer and licences (stage 6), testing on other machines, and
-a build of this branch on Linux (every change is behind `_WIN32`, `WIN32` or
+self-contained package that carries its own MSYS2 subset, with PGO profiles and
+the licences and source list of everything it carries (stages 5 and 6). It
+plays on the laptop's integrated Radeon too (table below). Not done: an
+installer, testing on other machines, and a build of this branch on Linux (every change is behind `_WIN32`, `WIN32` or
 `__MINGW32__`, and was checked by reading, not by building there).
 
 Performance in STG02 fighting, 60 s windows of the scripted route of
@@ -25,6 +26,7 @@ Performance in STG02 fighting, 60 s windows of the scripted route of
 | Build | Average | p95 frame | Worst 5 seconds |
 |---|---|---|---|
 | Windows, PGO, built by the launcher from the `--bundle --pgo` package (three runs) | 56.3 fps | 22.5 ms | 46.4 fps |
+| The same, on the integrated AMD Radeon (Vega 6 class) instead of the GTX 1650 (three runs) | 46.3 fps | 27.7 ms | 38.5 fps |
 | Windows, PGO (three runs) | 52.9 fps | 24.2 ms | 45.4 fps |
 | Windows, no PGO (four runs) | 41.9 fps | 32.1 ms | 33.3 fps |
 | Linux, PGO (`docs/PERFORMANCE.md`) | 51.3 fps | 22.9 ms | 47.0 fps |
@@ -122,15 +124,17 @@ then uses them.
 
 MSYS2 UCRT64 on the reference laptop (no Wine cross-build was needed).
 
-### 1. Configure and link: done, except
+### 1. Configure and link: done
 
-- [ ] Link libstdc++ and winpthread statically, or ship their DLLs, so the
-  executable runs outside the UCRT64 shell.
+- [x] The executable runs outside the UCRT64 shell: the launcher copies the
+  DLLs it imports beside it (stage 5).
 
-### 2. First boot: done, except
+### 2. First boot: done
 
-- [ ] Audit `long` and `off_t` (32-bit on Windows) in the bridges; `pread` was
-  the only one found so far.
+- [x] `long` and `off_t` (32-bit on Windows) audited in the bridges and the
+  SDK's file code: `pread` was the only fix. Game reads seek with
+  `_fseeki64`/`_ftelli64`; the remaining `long` sizes and positions are the
+  EBOOT and debug-only logging, and the largest disc file is 339 MB.
 
 ### 3. Playable: done, except
 
@@ -192,35 +196,51 @@ there.
 - [x] Self-contained package: `build_windows_package.py --bundle` copies the
   MSYS2 UCRT64 packages the build and the launcher need (compilers, CMake, Ninja,
   SDL2, glslang, Python with capstone, pycryptodome and PyGObject, GTK 4,
-  libadwaita and its icons) with every dependency pacman lists, without
-  documentation and locales, into `usr/toolchain/ucrt64`: 125 packages, 27,002
-  files, 2.4 GB in all. With a plain Windows `PATH` the launcher loaded no DLL
+  libadwaita and its icons, FFmpeg) with every dependency pacman lists, without
+  documentation and locales, into `usr/toolchain/ucrt64`: 176 packages, 28,683
+  files, 2.8 GB in all. With a plain Windows `PATH` the launcher loaded no DLL
   from `C:\msys64`, `--check` passed, and Install & Play imported, built and
   started the game. Without `--bundle`, `--python` points the package at this
   computer's MSYS2.
 - [x] An interrupted first data installation is cleared before the next
   start (above).
-- [ ] Stop during the import, with the bundled package.
+- [x] Stop during the import, with the bundled package (`Runner.stop`, as the
+  button, 8 s into the ISO extraction): the import ended in 1.3 s, no 7-Zip
+  process or temporary folder remained, only the verified RPCS3 in `tools/`,
+  which the next import reused; that import ran to the end in 88 s.
 - [x] PGO profiles in the package (`--pgo`), as in the AppImage: flat names,
   the SDK's path replaced by a neutral one that the importer renames to the
   player's SDK copy (`C:` as `C_`, as CMake names the objects).
+- [x] Graphics card choice (Settings, Rendering): Automatic, the game's own
+  pick of the first dedicated GPU, or a GPU by name, which the launcher turns
+  into `PS3RECOMP_VK_DEVICE` in the order `graphics-probe` lists them before
+  each start (a name survives a driver changing Vulkan's order).
 - [ ] MangoHud and GameMode are hidden (Linux tools).
 
-### 6. Packaging and licences: not started
+### 6. Packaging and licences: mostly done
 
-- Portable zip or installer (Inno Setup) of the `--bundle` package; 2.4 GB
-  unpacked, so trimming (clang or gcc for C only, unused GTK modules) is worth
-  measuring.
-- Sources tarball for every bundled binary (MinGW runtime, winpthreads, SDL2,
-  FFmpeg, 7-Zip); update `THIRD_PARTY_NOTICES.md` and `PUBLIC_FILES.txt`.
-- User-facing Windows instructions, including SmartScreen, Defender and **Smart
-  App Control**, which blocked a freshly built, unsigned executable once
-  ("An Application Control policy has blocked this file") before allowing it.
+- [x] Every bundled binary is an MSYS2 package at a recorded version
+  (`usr/toolchain/packages.json`: name, version, source package, licence),
+  except 7-Zip. FFmpeg is MSYS2's too, not a static third-party build: it
+  decodes the game's movie to exactly the same pixels as Gyan's 9.0.2 build,
+  and its sources come from the same place. Each package's licence files are
+  kept (`share/licenses`), 7-Zip's in `usr/share/licenses/7zip`.
+- [x] `scripts/collect_windows_sources.py` gathers the corresponding source:
+  the MSYS2 source package of each bundled version from repo.msys2.org, and
+  7-Zip's from its author's GitHub releases. `--check` found all 166 (2.3 GB).
+  `THIRD_PARTY_NOTICES.md` has a Windows section.
+- [x] The package works from a folder of at most 130 characters (the deepest
+  file is 124 below it; Windows stops at 260); the build says so first.
+- [x] Portable zip of the `--bundle` package, and the player's guide with
+  SmartScreen, Defender and Smart App Control: `docs/WINDOWS_PACKAGE.md`.
+- [ ] An installer (Inno Setup, not installed here), and trimming the 2.8 GB
+  (clang or gcc for C only, unused GTK modules, ffplay).
 
-### 7. Test matrix and beta: not started
+### 7. Test matrix and beta: started
 
-- Windows 10 and 11; NVIDIA, AMD and Intel GPUs; dual-GPU laptops
-  (`PS3RECOMP_VK_DEVICE`); build time on the player's computer.
+- [x] Dual-GPU laptop: the integrated Radeon chosen with `PS3RECOMP_VK_DEVICE=0`
+  ran the benchmark at 46.3 fps (the GTX 1650: 56.3).
+- [ ] Windows 10; other NVIDIA, AMD and Intel GPUs; other computers' build time.
 - GitHub Actions (windows-latest + MSYS2) for the SDK and its tests only: the
   lifted code comes from the game and is not public.
 - Milestone: Windows beta release.

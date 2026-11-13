@@ -12,7 +12,7 @@ import time
 
 from importer import (CONTROLS, DISPLAY_FILTERS, DISPLAY_MODES, EXE, PAD_BUTTONS, PAD_CONTROLS, RENDER_SCALES,
                       STICK_DEADZONE, WINDOWS, ImportError, Package, Runner, binding_ok,
-                      clear_interrupted_install)
+                      clear_interrupted_install, gpu_env, gpu_names)
 
 ROOT = Path(os.environ.get('PORT_APPDIR', Path(__file__).resolve().parents[1]))
 # The log files of one launch, in the order they are written.
@@ -97,9 +97,11 @@ def main():
     package = Package(ROOT)
     if args.check:
         cpu_check()
-        for tool in ('7z', 'ffmpeg', 'ffprobe'):
-            if not (ROOT / 'usr/bin' / (tool + EXE)).is_file():
+        for tool in ('ffmpeg', 'ffprobe'):
+            if not package.media_tool(tool).is_file():
                 raise ImportError('Missing bundled tool: ' + tool)
+        if not (ROOT / 'usr/bin' / ('7z' + EXE)).is_file():
+            raise ImportError('Missing bundled tool: 7z')
         code, formats = Runner().run(package.tool('7z', 'i'), capture=True)
         if code or 'Codec Load Error' in formats or 'Udf' not in formats:
             raise ImportError('Bundled ISO reader is missing UDF format support.')
@@ -379,6 +381,13 @@ def main():
                                     ('3', '3× (3840 × 2160)'), ('4', '4× (5120 × 2880)')],
                                    str(display.get('scale')), '1')
             render.add(self.scale)
+            # By name: Vulkan's device order can change with drivers. Laptops
+            # with two GPUs get the discrete one unless another is chosen.
+            gpus = [('', 'Automatic (the dedicated GPU, if any)')] + [(n, n) for n in package.list_gpus()]
+            if display.get('gpu') and display['gpu'] not in [k for k, _ in gpus]:
+                gpus.append((display['gpu'], display['gpu'] + ' (not found now)'))
+            self.gpu = combo_row('Graphics card', 'Which GPU draws the game', gpus, display.get('gpu'), '')
+            render.add(self.gpu)
             page.add(render)
             perf = Adw.PreferencesGroup(title='Performance')
             self.hud = switch_row('MangoHud overlay', 'Frame rate and frame times, if MangoHud is installed',
@@ -392,7 +401,7 @@ def main():
             perf.add(self.gamemode)
             if not WINDOWS:                  # MangoHud and GameMode are Linux tools
                 page.add(perf)
-            for row in (self.mode, self.size, self.filter, self.scale):
+            for row in (self.mode, self.size, self.filter, self.scale, self.gpu):
                 row.connect('notify::selected', lambda *_: self.settings_changed())
             self.hud.switch.connect('notify::active', lambda *_: self.settings_changed())
             self.gamemode.switch.connect('notify::active', lambda *_: self.settings_changed())
@@ -402,7 +411,7 @@ def main():
 
         def display_settings(self):
             return {'mode': self.mode.value(), 'size': self.size.value(), 'filter': self.filter.value(),
-                    'scale': self.scale.value()}
+                    'scale': self.scale.value(), 'gpu': self.gpu.value()}
 
         def settings_changed(self):
             self.size.set_sensitive(self.mode.value() != 'borderless')
@@ -784,10 +793,11 @@ def main():
                         self.message('The game\'s data installation was interrupted last time; it will install again.')
                     self.playing = True
                     self.message('Starting game. Logs: ' + str(log_dir))
+                    env = package.game_env(dest, log_dir, hud, display, controls)
+                    env.update(gpu_env(display.get('gpu'), gpu_names(details)))
                     with (log_dir / 'game.log').open('wb') as log:
                         code, _ = self.runner.run([*prefix, game, dest / 'game/EBOOT.ELF'], cwd=dest,
-                                                  env=package.game_env(dest, log_dir, hud, display, controls),
-                                                  log=log)
+                                                  env=env, log=log)
                     self.message('Game closed.' if code == 0 else 'Game exited (%d). Logs: %s' % (code, log_dir))
                 except (OSError, ImportError, ValueError) as e:
                     self.message(str(e) + '\nLogs: ' + str(log_dir))

@@ -111,6 +111,15 @@ class ImporterTests(unittest.TestCase):
             out=m.place_profiles(src,Path(tmp)/'work/pgo',Path('C:\\pkg\\usr\\share\\battride\\ps3recomp'))
             self.assertEqual([f.name for f in out.glob('*.gcda')],
                 ['CMakeFiles#x.dir#C_#pkg#usr#share#battride#ps3recomp#runtime#ppu#ppu_hle.cpp.gcda'])
+    def test_gpu_chosen_by_name(self):
+        probe=('GPU: AMD Radeon(TM) Graphics (Vulkan 1.3.260), BC textures: yes\r\n'
+               'GPU: NVIDIA GeForce GTX 1650 (Vulkan 1.4.357), BC textures: yes\r\n'
+               'Vulkan window/device check passed.\r\n')
+        names=m.gpu_names(probe)
+        self.assertEqual(names,['AMD Radeon(TM) Graphics','NVIDIA GeForce GTX 1650'])
+        self.assertEqual(m.gpu_env('NVIDIA GeForce GTX 1650',names),{'PS3RECOMP_VK_DEVICE':'1'})
+        self.assertEqual(m.gpu_env('',names),{})
+        self.assertEqual(m.gpu_env('Old GPU',names),{})
     def test_display_env_accepts_only_known_values(self):
         self.assertEqual(m.display_env({'mode':'fullscreen','size':'2560x1440','filter':'linear'}),
             {'PORT_DISPLAY_MODE':'fullscreen','PORT_DISPLAY_SIZE':'2560x1440','PORT_DISPLAY_FILTER':'linear'})

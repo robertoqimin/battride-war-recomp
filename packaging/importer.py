@@ -20,6 +20,7 @@ EXE = '.exe' if WINDOWS else ''
 # and the build nests about 155 more below the data folder (the SPU generator's
 # stage directories carry a 64-character hash).
 WINDOWS_DATA_PATH_MAX = 100
+WINDOWS_PACKAGE_PATH_MAX = 130
 
 
 def scratch_name(prefix):
@@ -210,6 +211,18 @@ def display_env(display):
     return env
 
 
+def gpu_names(probe_output):
+    """The GPUs graphics-probe listed, in Vulkan's order: the game's device numbers."""
+    return [m[1] for m in re.finditer(r'^GPU: (.+) \(Vulkan [0-9.]+\)', probe_output, re.M)]
+
+
+def gpu_env(name, names):
+    """PS3RECOMP_VK_DEVICE for a GPU chosen by name (the order can change with
+    drivers); empty for Automatic or a GPU no longer present, and the game
+    then takes the first discrete GPU (vulkan_bridge.c)."""
+    return {'PS3RECOMP_VK_DEVICE': str(names.index(name))} if name and name in names else {}
+
+
 def windows_cpu():
     """(model, feature flags) on Windows: no /proc/cpuinfo there."""
     import ctypes
@@ -375,11 +388,29 @@ class Package:
     def tool(self, name, *args):
         return [self.root / 'usr/bin' / (name + EXE), *args]
 
+    def list_gpus(self):
+        """GPU names in the game's device order, from graphics-probe; [] if it cannot run."""
+        env = os.environ.copy()
+        if WINDOWS:
+            env['PATH'] = os.pathsep.join([str(self.root / 'usr/bin'), env.get('PATH', '')])
+        try:
+            _, output = Runner().run(self.tool('graphics-probe'), env=env, capture=True)
+        except OSError:
+            return []
+        return gpu_names(output)
+
     def windows_toolchain(self):
         """(bin directory, Python) of the MSYS2 UCRT64 toolchain named in usr/toolchain/toolchain.json,
         relative to the package or absolute."""
         info = json.loads((self.root / 'usr/toolchain/toolchain.json').read_text())
         return (self.root / 'usr/toolchain' / info['bin']).resolve(), (self.root / 'usr/toolchain' / info['python']).resolve()
+
+    def media_tool(self, name):
+        """ffmpeg or ffprobe: usr/bin, else (Windows) the bundled MSYS2 toolchain's."""
+        path = self.root / 'usr/bin' / (name + EXE)
+        if WINDOWS and not path.is_file():
+            path = self.windows_toolchain()[0] / (name + EXE)
+        return path
 
     def helper_env(self, stage):
         # RPCS3's own AppRun sets up its libraries (and its checkrt C++ runtime
@@ -637,6 +668,12 @@ class Package:
         if existing:
             status('Using the game already built on this computer')
             return existing
+        # The compilers read headers up to 124 characters below the package
+        # (libstdc++'s pb_ds), and Windows stops at 260.
+        if WINDOWS and len(str(self.root.resolve())) > WINDOWS_PACKAGE_PATH_MAX:
+            raise ImportError('The game folder path is too long for Windows (%d characters, at most %d): move it '
+                              'to a shorter one, for example C:\\Games\\BattrideWar.'
+                              % (len(str(self.root.resolve())), WINDOWS_PACKAGE_PATH_MAX))
         if shutil.disk_usage(data).free < 4 * 1024**3:
             raise ImportError('Building the game needs about 4 GB of free space in the data folder.')
         jobs = build_jobs()
@@ -754,9 +791,11 @@ class Package:
                     'LD_LIBRARY_PATH', 'LD_PRELOAD', 'PS3_VFS_ROOT', 'PS3_GAMEDATA_ROOT', 'PS3_DEV_FLASH'):
                 env.pop(k, None)
         # The game finds its libraries through its RPATH (runner/lib); on Windows
-        # beside it, and ffmpeg/ffprobe for the movies in usr/bin.
+        # beside it, and ffmpeg/ffprobe for the movies in usr/bin or, in a
+        # package with the MSYS2 toolchain, with their DLLs in its bin.
         if WINDOWS:
-            env['PATH'] = os.pathsep.join([str(self.root / 'usr/bin'), env.get('PATH', '')])
+            env['PATH'] = os.pathsep.join([str(self.root / 'usr/bin'), str(self.windows_toolchain()[0]),
+                                           env.get('PATH', '')])
         env.setdefault('VK_LOADER_DEBUG', 'error,warn')
         path = Path.as_posix if WINDOWS else str       # the runner's VFS joins with '/'
         env.update(PS3_VFS_ROOT=path(Path(data) / 'game'), PS3_GAMEDATA_ROOT=path(Path(data) / 'gamedata'),
