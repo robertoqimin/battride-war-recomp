@@ -14,8 +14,8 @@ Audio, a controller (XInput), keyboard and mouse, windowed and borderless
 fullscreen (Alt+Enter), internal resolution 1x/2x/4x and FSR 1 work.
 
 The GTK 4 launcher imports the ISO and builds the game on Windows from a
-package that still uses the local MSYS2 (stage 5). Not done: a self-contained
-package, testing on other machines, and
+self-contained package that carries its own MSYS2 subset (stage 5). Not done:
+an installer and licences (stage 6), testing on other machines, and
 a build of this branch on Linux (every change is behind `_WIN32`, `WIN32` or
 `__MINGW32__`, and was checked by reading, not by building there).
 
@@ -24,6 +24,7 @@ Performance in STG02 fighting, 60 s windows of the scripted route of
 
 | Build | Average | p95 frame | Worst 5 seconds |
 |---|---|---|---|
+| Windows, PGO, built by the launcher from the `--bundle --pgo` package (three runs) | 56.3 fps | 22.5 ms | 46.4 fps |
 | Windows, PGO (three runs) | 52.9 fps | 24.2 ms | 45.4 fps |
 | Windows, no PGO (four runs) | 41.9 fps | 32.1 ms | 33.3 fps |
 | Linux, PGO (`docs/PERFORMANCE.md`) | 51.3 fps | 22.9 ms | 47.0 fps |
@@ -70,7 +71,11 @@ export PS3_VFS_ROOT="$(cygpath -m "$PWD")/game" PS3_GAMEDATA_ROOT="$(cygpath -m 
 
 Paths are passed with `/`: the runner derives the VFS root from the EBOOT path.
 Do not stop the game during its first data installation: the half-installed
-data then fails with `BROKEN_EXIT_GAMEDATA`; delete `game/game` and start again.
+data then fails with `BROKEN_EXIT_GAMEDATA` (the title screen, and nothing
+more); delete `game/game/BLJS10220DATA` and start again. The launcher does this
+itself: the game writes `nativePS/system/BLJS10220DATA.start` there before
+installing and `.installed` after, and a folder without `.installed` is removed
+before the game starts.
 
 **PGO and the benchmark:** `scripts/pgo_train.py` and `scripts/bench_combat.py`
 run on Windows from the UCRT64 shell, with ffmpeg on `PATH` (no per-thread CPU,
@@ -86,9 +91,13 @@ python scripts/bench_combat.py --binary build-pgo/kamenriderbattridewarsport.exe
 ```
 
 A training session ends with Ctrl+Break to the game's process group, which the
-training build takes as `SIGTERM` (`SIGBREAK` in `main.cpp`). On Windows the
-`.gcda` names keep the build directory's absolute path, so profiles only apply
-in the directory that made them.
+training build takes as `SIGTERM` (`SIGBREAK` in `main.cpp`). MinGW GCC
+compares `-fprofile-prefix-path` with the working directory as Windows spells
+it (`C:\...`), so CMake passes the build directory in that form there; with `/`
+the whole absolute path stayed in the `.gcda` names (`pgo/C~/Users/...`) and
+the profiles applied only in the directory that made them. Pass them to
+`scripts/build_windows_package.py --pgo` to ship them; the launcher's build
+then uses them.
 
 ## What was changed, and why
 
@@ -151,7 +160,7 @@ MSYS2 UCRT64 on the reference laptop (no Wine cross-build was needed).
 - [ ] The `PORT_PROFILE` sampler and huge pages (`SeLockMemoryPrivilege`) are
   not ported.
 
-### 5. Launcher and importer: done, except the bundled toolchain
+### 5. Launcher and importer: done
 
 The launcher keeps its GTK 4 / libadwaita interface (MSYS2's `gtk4`,
 `libadwaita` and `python-gobject`). `scripts/build_windows_package.py` assembles
@@ -180,14 +189,28 @@ there.
   launcher says so before starting, and its temporary folders have short names.
 - [x] The build identity hashes the sources' paths with `/`, so MSYS2's Python
   and the Windows one agree and a built game is not rebuilt for nothing.
-- [ ] The package points at this computer's MSYS2 (`usr/toolchain/toolchain.json`)
-  and at a Python with the SDK tools' requirements: bundling them, and GTK with
-  its icons and schemas, is stage 6. MangoHud and GameMode are hidden (Linux
-  tools). Shipped PGO profiles need the build directory problem above solved.
+- [x] Self-contained package: `build_windows_package.py --bundle` copies the
+  MSYS2 UCRT64 packages the build and the launcher need (compilers, CMake, Ninja,
+  SDL2, glslang, Python with capstone, pycryptodome and PyGObject, GTK 4,
+  libadwaita and its icons) with every dependency pacman lists, without
+  documentation and locales, into `usr/toolchain/ucrt64`: 125 packages, 27,002
+  files, 2.4 GB in all. With a plain Windows `PATH` the launcher loaded no DLL
+  from `C:\msys64`, `--check` passed, and Install & Play imported, built and
+  started the game. Without `--bundle`, `--python` points the package at this
+  computer's MSYS2.
+- [x] An interrupted first data installation is cleared before the next
+  start (above).
+- [ ] Stop during the import, with the bundled package.
+- [x] PGO profiles in the package (`--pgo`), as in the AppImage: flat names,
+  the SDK's path replaced by a neutral one that the importer renames to the
+  player's SDK copy (`C:` as `C_`, as CMake names the objects).
+- [ ] MangoHud and GameMode are hidden (Linux tools).
 
 ### 6. Packaging and licences: not started
 
-- Portable zip or installer (Inno Setup).
+- Portable zip or installer (Inno Setup) of the `--bundle` package; 2.4 GB
+  unpacked, so trimming (clang or gcc for C only, unused GTK modules) is worth
+  measuring.
 - Sources tarball for every bundled binary (MinGW runtime, winpthreads, SDL2,
   FFmpeg, 7-Zip); update `THIRD_PARTY_NOTICES.md` and `PUBLIC_FILES.txt`.
 - User-facing Windows instructions, including SmartScreen, Defender and **Smart
@@ -207,4 +230,4 @@ there.
 - The Linux build of this branch has not been run.
 - The `_cellsurMixerMain` ordering is not guaranteed on Linux either; it has not
   been seen to fail there, and the Linux code was left unchanged.
-- Size of the bundled toolchain and build time with Defender active (stage 5).
+- Size of the bundled toolchain and build time with Defender active.

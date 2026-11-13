@@ -93,11 +93,22 @@ def place_profiles(source, dest, sdk):
     shutil.copytree(source, dest)
     trained = json.loads((dest / 'profile.json').read_text()).get('sdk_dir', '')
     if trained:
-        old, new = trained.replace('/', '#'), str(sdk).replace('/', '#')
+        old, new = profile_path_name(trained), profile_path_name(sdk)
         for f in dest.glob('*.gcda'):
             if old in f.name:
-                f.rename(f.with_name(f.name.replace(old, new)))
+                try:
+                    f.rename(f.with_name(f.name.replace(old, new)))
+                except OSError:
+                    # Past Windows' 260 characters: this file is built without its profile.
+                    f.unlink()
     return dest
+
+
+def profile_path_name(path):
+    """How an absolute source path appears in a GCC profile name: CMake names
+    the object after it (C: becomes C_ on Windows), and GCC turns '/' into '#'."""
+    path = Path(path).as_posix() if WINDOWS else str(path)
+    return path.replace(':', '_').replace('/', '#') if WINDOWS else path.replace('/', '#')
 
 
 # Display settings the launcher offers, passed to the game's window
@@ -254,6 +265,21 @@ def build_jobs():
     except (OSError, TypeError, ValueError):
         available = 4 * 1024**3
     return max(1, min(cpus, (available - 1024**3) // BUILD_JOB_MEMORY))
+
+
+def clear_interrupted_install(data):
+    """Remove the game's data installation if it was stopped before finishing.
+
+    On first boot the game copies its data to /dev_hdd0/game/BLJS10220DATA,
+    writing nativePS/system/BLJS10220DATA.start before and .installed after.
+    A folder without .installed then makes it stop at the title screen with
+    BROKEN_EXIT_GAMEDATA; without the folder it installs again. Saves are
+    elsewhere (gamedata). Returns True if a folder was removed."""
+    install = Path(data) / 'game/game/BLJS10220DATA'
+    if not install.is_dir() or (install / 'USRDIR/nativePS/system/BLJS10220DATA.installed').is_file():
+        return False
+    shutil.rmtree(install)
+    return True
 
 
 def safe_name(name):

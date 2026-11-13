@@ -11,7 +11,8 @@ import threading
 import time
 
 from importer import (CONTROLS, DISPLAY_FILTERS, DISPLAY_MODES, EXE, PAD_BUTTONS, PAD_CONTROLS, RENDER_SCALES,
-                      STICK_DEADZONE, WINDOWS, ImportError, Package, Runner, binding_ok)
+                      STICK_DEADZONE, WINDOWS, ImportError, Package, Runner, binding_ok,
+                      clear_interrupted_install)
 
 ROOT = Path(os.environ.get('PORT_APPDIR', Path(__file__).resolve().parents[1]))
 # The log files of one launch, in the order they are written.
@@ -779,6 +780,8 @@ def main():
                     (log_dir / 'graphics.log').write_text(details)
                     if code:
                         raise ImportError('Vulkan/window check failed. See graphics.log: ' + details[-1800:])
+                    if clear_interrupted_install(dest):
+                        self.message('The game\'s data installation was interrupted last time; it will install again.')
                     self.playing = True
                     self.message('Starting game. Logs: ' + str(log_dir))
                     with (log_dir / 'game.log').open('wb') as log:

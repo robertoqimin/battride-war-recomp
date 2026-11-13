@@ -2,17 +2,24 @@
 """Assemble the Windows package the launcher runs from (packaging/launcher.py).
 
 The same layout as the AppImage (app/, usr/bin, usr/share/battride), with
-Windows tools: 7-Zip, FFmpeg and graphics-probe.exe. The compiler toolchain is
-not copied yet: usr/toolchain/toolchain.json points at an MSYS2 UCRT64
-installation and at a Python with the SDK tools' requirements, so this package
-runs on the computer that built it (a self-contained one is stage 6 of
-docs/WINDOWS.md). Like the AppImage it holds no game code or assets: the disc
-manifest has only names, sizes and SHA-256 of the files the import verifies.
+Windows tools: 7-Zip, FFmpeg and graphics-probe.exe. Like the AppImage it holds
+no game code or assets: the disc manifest has only names, sizes and SHA-256 of
+the files the import verifies.
+
+With --bundle the package carries its own MSYS2 UCRT64 subset under
+usr/toolchain/ucrt64: the compilers, CMake, Ninja, the SDK's libraries, and one
+Python with GTK 4, libadwaita and PyGObject for the launcher and capstone and
+pycryptodome for the SDK tools (the only modules of tools/requirements.txt they
+import). The packages and every dependency come from the local pacman database.
+Without it, usr/toolchain/toolchain.json points at the local installation and at
+--python, and the package runs only on the computer that built it.
 
 usage: build_windows_package.py --stage <new dir> --sevenzip-dir <dir with 7z.exe and 7z.dll>
-       --ffmpeg-dir <dir with ffmpeg.exe and ffprobe.exe> --python <python with tools/requirements.txt>
-       [--toolchain C:/msys64/ucrt64] [--sdk ../ps3recomp]
-Run it with the MSYS2 UCRT64 tools on PATH (graphics-probe.exe is built here).
+       --ffmpeg-dir <dir with ffmpeg.exe and ffprobe.exe> (--bundle | --python <python>)
+       [--pgo <profiles from scripts/pgo_train.py>] [--toolchain C:/msys64/ucrt64] [--sdk ../ps3recomp]
+
+With --pgo the package carries GCC profiles that the player's build applies
+(PORT_PGO=use). They fit only the GCC, SDK and EBOOT they were trained with.
 """
 import argparse
 import hashlib
@@ -29,10 +36,20 @@ ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDe
 ap.add_argument('--stage', type=Path, required=True)
 ap.add_argument('--sevenzip-dir', type=Path, required=True)
 ap.add_argument('--ffmpeg-dir', type=Path, required=True)
-ap.add_argument('--python', type=Path, required=True)
+ap.add_argument('--python', type=Path, help='Python with the SDK tools\' requirements (without --bundle)')
+ap.add_argument('--bundle', action='store_true', help='copy the MSYS2 toolchain, GTK and Python into the package')
+ap.add_argument('--pgo', type=Path, help='GCC profiles and profile.json from scripts/pgo_train.py')
 ap.add_argument('--toolchain', type=Path, default=Path('C:/msys64/ucrt64'))
 ap.add_argument('--sdk', type=Path, default=P.parent / 'ps3recomp')
 args = ap.parse_args()
+if args.bundle == bool(args.python):
+    ap.error('give either --bundle or --python')
+# What the package needs from MSYS2 UCRT64; pacman adds their dependencies.
+BUNDLE = ('gcc', 'clang', 'lld', 'binutils', 'cmake', 'ninja', 'pkgconf', 'SDL2', 'vulkan-headers', 'glslang',
+          'spirv-tools', 'python', 'python-capstone', 'python-pycryptodome', 'python-gobject', 'gtk4',
+          'libadwaita', 'adwaita-icon-theme')
+# Not needed to build or to show the launcher.
+SKIP_DIRS = ('share/doc/', 'share/man/', 'share/info/', 'share/gtk-doc/', 'share/locale/', 'share/licenses/')
 S = args.stage.resolve()
 if S.exists():
     raise SystemExit('Choose a new stage directory; existing files are preserved.')
@@ -97,10 +114,83 @@ while todo:
             copy(tools / name, S / 'usr/bin' / name)
             todo.append(tools / name)
 
-# The toolchain the launcher builds the game with (this computer's MSYS2 for now).
 (S / 'usr/toolchain').mkdir(parents=True)
-(S / 'usr/toolchain/toolchain.json').write_text(json.dumps({'bin': str(tools), 'python': str(args.python.resolve())},
-                                                           indent=2) + '\n')
+if args.bundle:
+    # Every file of the packages and of their dependencies, at the same place
+    # below usr/toolchain/ucrt64 as below the MSYS2 ucrt64 directory.
+    pacman = Path(args.toolchain).resolve().parent / 'usr/bin/pacman.exe'
+    msys_root = Path(args.toolchain).resolve().parent
+    todo, packages = ['mingw-w64-ucrt-x86_64-' + n for n in BUNDLE], set()
+    while todo:
+        name = todo.pop()
+        if name in packages:
+            continue
+        info = subprocess.run([str(pacman), '-Qi', name], capture_output=True, text=True, check=True).stdout
+        packages.add(name)
+        depends = next((l.split(':', 1)[1] for l in info.splitlines() if l.startswith('Depends On')), '')
+        for dep in depends.split():
+            dep = dep.split('>')[0].split('<')[0].split('=')[0]
+            if dep.startswith('mingw-w64-ucrt-x86_64-') and dep not in packages:
+                todo.append(dep)
+    copied, size = 0, 0
+    for name in sorted(packages):
+        listing = subprocess.run([str(pacman), '-Ql', name], capture_output=True, text=True, check=True).stdout
+        for line in listing.splitlines():
+            rel = line.split(' ', 1)[1].lstrip('/')
+            if not rel.startswith('ucrt64/') or rel.endswith('/'):
+                continue
+            inside = rel[len('ucrt64/'):]
+            if inside.startswith(SKIP_DIRS) or '/__pycache__/' in inside or '/site-packages/' not in inside and '/test/' in inside:
+                continue
+            src = msys_root / rel
+            if src.is_file():
+                copy(src, S / 'usr/toolchain/ucrt64' / inside)
+                copied += 1
+                size += src.stat().st_size
+    # The caches pacman's install hooks generate, which no package lists: GTK's
+    # file chooser aborts without the compiled GSettings schemas.
+    u = S / 'usr/toolchain/ucrt64'
+    hook_env = {**os.environ, 'PATH': os.pathsep.join([str(u / 'bin'), os.environ.get('PATH', '')])}
+    for cmd in (['glib-compile-schemas', u / 'share/glib-2.0/schemas'],
+                ['gdk-pixbuf-query-loaders', '--update-cache'],
+                ['gtk4-update-icon-cache', '-q', '-f', '-t', u / 'share/icons/Adwaita'],
+                ['gtk4-update-icon-cache', '-q', '-f', '-t', u / 'share/icons/hicolor'],
+                ['update-mime-database', u / 'share/mime']):
+        subprocess.run([str(u / 'bin' / (cmd[0] + '.exe')), *map(str, cmd[1:])], check=True, env=hook_env)
+    (S / 'usr/toolchain/packages.txt').write_text('\n'.join(sorted(packages)) + '\n')
+    print('Toolchain: %d MSYS2 packages, %d files, %.0f MB' % (len(packages), copied, size / 1e6), flush=True)
+    toolchain = {'bin': 'ucrt64/bin', 'python': 'ucrt64/bin/python.exe'}
+else:
+    # This computer's MSYS2 and the given Python.
+    toolchain = {'bin': str(tools), 'python': str(args.python.resolve())}
+(S / 'usr/toolchain/toolchain.json').write_text(json.dumps(toolchain, indent=2) + '\n')
+
+pgo = False
+if args.pgo:
+    info = json.loads((args.pgo / 'profile.json').read_text())
+    gcc = subprocess.check_output([str(tools / 'g++.exe'), '-dumpfullversion'], text=True).strip()
+    if (info['gcc'], info['sdk_commit'], info['eboot_sha256']) != (gcc, spec['sdk_commit'], spec['eboot_sha256']):
+        raise SystemExit('The profiles in %s were trained with GCC %s, SDK %s; this build uses GCC %s, SDK %s.'
+                         % (args.pgo, info['gcc'], info['sdk_commit'], gcc, spec['sdk_commit']))
+    files = sorted(args.pgo.rglob('*.gcda'))
+    if len(files) != info['files']:
+        raise SystemExit('profile.json lists %d profiles, found %d' % (info['files'], len(files)))
+    # As in build_appimage.py: SDK sources keep the training SDK path in their
+    # names (C:/x/ps3recomp as C_#x#ps3recomp); ship them under a neutral one,
+    # which the importer renames to the player's SDK copy.
+    trained = info.get('sdk_dir', '').replace(':', '_').replace('/', '#')
+    neutral = '/ps3recomp'
+    for f in files:
+        name = f.relative_to(args.pgo).as_posix()
+        if '/' in name:
+            raise SystemExit('Profile below a directory (trained before the CMake prefix fix?): ' + name)
+        if trained:
+            name = name.replace(trained, neutral.replace('/', '#'))
+        copy(f, S / 'usr/share/battride/pgo' / name)
+    (S / 'usr/share/battride/pgo/profile.json').write_text(json.dumps(dict(info, sdk_dir=neutral), indent=2) + '\n')
+    if any('Users#' in n.name for n in (S / 'usr/share/battride/pgo').iterdir()):
+        raise SystemExit('A profile name still carries a user directory.')
+    pgo = True
 
 # What the import verifies on the player's disc: names, sizes and SHA-256 only.
 manifest = {}
@@ -115,15 +205,16 @@ meta = {'version': '0.5.2-windows', 'cpu': 'built on the player computer, -march
         'elf_sha256': spec['eboot_sha256'], 'sdk_commit': spec['sdk_commit'],
         'rpcs3': json.loads((P / 'packaging/rpcs3-windows.json').read_text()),
         'codecs': {p.name: sha(p) for p in (P / 'firmware/dev_flash/sys/external').glob('*.pic')},
-        'game_libs': [], 'sevenzip_sha256': sha(S / 'usr/bin/7z.exe'), 'pgo': False}
+        'game_libs': [], 'sevenzip_sha256': sha(S / 'usr/bin/7z.exe'), 'pgo': pgo}
 (S / 'app/package.json').write_text(json.dumps(meta, indent=2))
 for n in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
     copy(P / n, S / 'usr/share/licenses/port' / n)
 
 # Start the launcher with the toolchain's Python and GTK, without a console window.
+bindir = '%~dp0usr\\toolchain\\ucrt64\\bin' if args.bundle else str(tools)
 (S / 'BattrideWarRecomp.cmd').write_bytes((
     '@echo off\r\n'
     'set "PORT_APPDIR=%~dp0."\r\n'
     'set "PATH={0};%~dp0usr\\bin;%PATH%"\r\n'
-    'start "" "{0}\\pythonw.exe" "%~dp0app\\launcher.py" %*\r\n').format(tools).encode())
+    'start "" "{0}\\pythonw.exe" "%~dp0app\\launcher.py" %*\r\n').format(bindir).encode())
 print('Package:', S, '(%d disc files in the manifest)' % len(manifest))

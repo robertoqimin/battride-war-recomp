@@ -368,8 +368,15 @@ if(NOT PORT_PGO STREQUAL "off")
     # Profile files are named after each object's path relative to the build
     # directory, so profiles trained in one tree apply to a build in another
     # (the AppImage builds in a fresh directory on the player's computer).
+    # MinGW GCC compares the prefix with the working directory as Windows
+    # spells it (C:\...), so give it that form there; with '/' the whole
+    # absolute path stays in the names.
+    set(PORT_PGO_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
+    if(WIN32)
+        file(TO_NATIVE_PATH "${PORT_PGO_PREFIX}" PORT_PGO_PREFIX)
+    endif()
     target_compile_options(${PROJECT_NAME} PRIVATE
-        "$<$<COMPILE_LANGUAGE:CXX>:-fprofile-prefix-path=${CMAKE_CURRENT_BINARY_DIR}>")
+        "$<$<COMPILE_LANGUAGE:CXX>:-fprofile-prefix-path=${PORT_PGO_PREFIX}>")
     if(PORT_PGO STREQUAL "generate")
         target_compile_options(${PROJECT_NAME} PRIVATE
             "$<$<COMPILE_LANGUAGE:CXX>:-fprofile-generate=${PORT_PGO_DIR}>"

@@ -49,10 +49,12 @@ def stop_group(proc):
         os.killpg(proc.pid, signal.SIGTERM)
 
 
-def cache_value(build, name):
-    for line in (build / 'CMakeCache.txt').read_text().splitlines():
-        if line.startswith(name + ':'):
-            return line.split('=', 1)[1]
+def cache_value(build, name, *fallbacks):
+    lines = (build / 'CMakeCache.txt').read_text().splitlines()
+    for key in (name, *fallbacks):
+        for line in lines:
+            if line.startswith(key + ':'):
+                return line.split('=', 1)[1]
     raise SystemExit('%s not in %s/CMakeCache.txt' % (name, build))
 
 
@@ -182,7 +184,9 @@ def record(build, profiles, spec, elf, sessions):
         'sessions': sessions, 'files': len(files),
         # SDK sources outside the build tree keep their absolute path in the
         # profile names; the importer renames those for the player's SDK copy.
-        'sdk_dir': cache_value(build, 'PS3RECOMP_DIR')}, indent=2) + '\n')
+        # Without -DPS3RECOMP_DIR (the windows-vulkan preset) CMake uses ../ps3recomp
+        # uncached; the SDK subproject records the same directory.
+        'sdk_dir': cache_value(build, 'PS3RECOMP_DIR', 'ps3recomp_runtime_SOURCE_DIR')}, indent=2) + '\n')
     print('Wrote %d profiles for GCC %s to %s' % (len(files), version, profiles))
 
 

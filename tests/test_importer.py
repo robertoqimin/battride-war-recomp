@@ -102,6 +102,15 @@ class ImporterTests(unittest.TestCase):
             self.assertEqual(sorted(f.name for f in out.glob('*.gcda')),
                 sorted(['CMakeFiles#x.dir#src#recomp#ppu_recomp_000.cpp.gcda',
                         'CMakeFiles#x.dir#tmp#.mount_X#usr#share#battride#ps3recomp#runtime#ppu#ppu_hle.cpp.gcda']))
+    @unittest.skipUnless(m.WINDOWS,'Windows profile names')
+    def test_profiles_renamed_for_windows_sdk_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src=Path(tmp)/'pgo';src.mkdir()
+            (src/'profile.json').write_text(json.dumps({'sdk_dir':'/ps3recomp'}))
+            (src/'CMakeFiles#x.dir##ps3recomp#runtime#ppu#ppu_hle.cpp.gcda').write_bytes(b'1')
+            out=m.place_profiles(src,Path(tmp)/'work/pgo',Path('C:\\pkg\\usr\\share\\battride\\ps3recomp'))
+            self.assertEqual([f.name for f in out.glob('*.gcda')],
+                ['CMakeFiles#x.dir#C_#pkg#usr#share#battride#ps3recomp#runtime#ppu#ppu_hle.cpp.gcda'])
     def test_display_env_accepts_only_known_values(self):
         self.assertEqual(m.display_env({'mode':'fullscreen','size':'2560x1440','filter':'linear'}),
             {'PORT_DISPLAY_MODE':'fullscreen','PORT_DISPLAY_SIZE':'2560x1440','PORT_DISPLAY_FILTER':'linear'})
@@ -126,6 +135,16 @@ class ImporterTests(unittest.TestCase):
         self.assertIn('pad_circle = B\n',text)
         self.assertIn('pad_l2 = \n',text)
         self.assertIn('stick_deadzone = 0.50\n',text)
+    def test_interrupted_install_cleared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data=Path(tmp);system=data/'game/game/BLJS10220DATA/USRDIR/nativePS/system'
+            self.assertFalse(m.clear_interrupted_install(data))
+            system.mkdir(parents=True);(system/'BLJS10220DATA.start').write_text('OK')
+            self.assertTrue(m.clear_interrupted_install(data))
+            self.assertFalse((data/'game/game/BLJS10220DATA').exists())
+            system.mkdir(parents=True);(system/'BLJS10220DATA.installed').write_text('OK')
+            self.assertFalse(m.clear_interrupted_install(data))
+            self.assertTrue(system.is_dir())
     def test_build_jobs_positive(self):
         self.assertGreaterEqual(m.build_jobs(),1)
 
