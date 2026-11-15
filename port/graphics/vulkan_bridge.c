@@ -82,6 +82,10 @@
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>              /* _mkdir */
+#endif
 
 /* ---------------------------------------------------------------------------
  * Run-time loaded entry points (Vulkan 1.0 core only)
@@ -110,6 +114,7 @@
     X(vkAllocateDescriptorSets) X(vkUpdateDescriptorSets) \
     X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
     X(vkCreateGraphicsPipelines) X(vkCreateComputePipelines) X(vkDestroyPipeline) \
+    X(vkCreatePipelineCache) X(vkGetPipelineCacheData) X(vkDestroyPipelineCache) \
     X(vkCreateSampler) X(vkDestroySampler) \
     X(vkCmdPipelineBarrier) X(vkCmdClearColorImage) X(vkCmdClearDepthStencilImage) \
     X(vkCmdCopyImageToBuffer) X(vkCmdCopyBufferToImage) X(vkCmdCopyImage) \
@@ -297,6 +302,195 @@ static vk_state s_vk;
          if (r_ != VK_SUCCESS) {                                           \
              VK_LOG("%s failed (VkResult %d)\n", (what), (int)r_);         \
              return -1; } } while (0)
+
+/* ---------------------------------------------------------------------------
+ * Pipeline cache on disk
+ * Every pipeline is compiled the first time a scene draws with it. The
+ * pipelines go through one VkPipelineCache that is kept in a file, so a later
+ * run hands the driver what it compiled before. One file per GPU (vendor and
+ * device id in the name): switching between two GPUs keeps both. The header
+ * is checked here before the driver sees the data; a driver update changes
+ * the cache UUID and the old data is dropped.
+ * Default file: $XDG_CACHE_HOME (or ~/.cache) / %LOCALAPPDATA%, folder
+ * battride-war-port. PORT_PIPELINE_CACHE=0 turns it off; any other value is
+ * the file to use. Saved a few seconds after the last new pipeline and when
+ * the window closes: the game ends with _exit, so the teardown never runs.
+ * -------------------------------------------------------------------------*/
+#define VK_PC_QUIET_NS (3LL * 1000000000LL)  /* save this long after the last new pipeline */
+#define VK_PC_MAX_BYTES (256u << 20)
+static struct {
+    VkPipelineCache cache;
+    char            path[1024];
+    u32             created;      /* pipelines created since the last save */
+    u32             total;        /* and in this run */
+    long long       ns;           /* time spent creating them, this run */
+    long long       last_new;     /* monotonic ns of the newest */
+    size_t          on_disk;      /* bytes in the file: the driver found every
+                                   * pipeline there when the size has not grown */
+    pthread_mutex_t mu;
+} s_pc = { .mu = PTHREAD_MUTEX_INITIALIZER };
+
+static long long vk_mono_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+
+static void vk_pc_mkdirs(char* path)          /* every folder above the file */
+{
+    for (char* c = path + 1; *c; c++) {
+        if (*c != '/' && *c != '\\') continue;
+        const char keep = *c;
+        *c = 0;
+#ifdef _WIN32
+        _mkdir(path);
+#else
+        mkdir(path, 0755);
+#endif
+        *c = keep;
+    }
+}
+
+static int vk_pc_path(const VkPhysicalDeviceProperties* p)
+{
+    const char* e = getenv("PORT_PIPELINE_CACHE");
+    if (e && !strcmp(e, "0")) return -1;
+    if (e && *e) { snprintf(s_pc.path, sizeof s_pc.path, "%s", e); return 0; }
+    char dir[900];
+#ifdef _WIN32
+    const char* base = getenv("LOCALAPPDATA");
+    if (!base || !*base) return -1;
+    snprintf(dir, sizeof dir, "%s\\battride-war-port", base);
+    const char sep = '\\';
+#else
+    const char* base = getenv("XDG_CACHE_HOME");
+    if (base && *base) snprintf(dir, sizeof dir, "%s/battride-war-port", base);
+    else if ((base = getenv("HOME")) && *base) snprintf(dir, sizeof dir, "%s/.cache/battride-war-port", base);
+    else return -1;
+    const char sep = '/';
+#endif
+    snprintf(s_pc.path, sizeof s_pc.path, "%s%cpipelines-%04x-%04x.bin", dir, sep,
+             (unsigned)p->vendorID, (unsigned)p->deviceID);
+    return 0;
+}
+
+/* The VK_PIPELINE_CACHE_HEADER_VERSION_ONE header of data from this device. */
+static int vk_pc_header_ok(const unsigned char* d, size_t n, const VkPhysicalDeviceProperties* p)
+{
+    u32 w[4];
+    if (n < 32) return 0;
+    memcpy(w, d, sizeof w);
+    return w[0] >= 32 && w[0] <= n && w[1] == VK_PIPELINE_CACHE_HEADER_VERSION_ONE &&
+           w[2] == p->vendorID && w[3] == p->deviceID &&
+           !memcmp(d + 16, p->pipelineCacheUUID, VK_UUID_SIZE);
+}
+
+static void vk_pc_open(void)
+{
+    VkPhysicalDeviceProperties p;
+    pvkGetPhysicalDeviceProperties(s_vk.phys, &p);
+    unsigned char* data = NULL;
+    size_t n = 0;
+    if (vk_pc_path(&p) == 0) {
+        FILE* f = fopen(s_pc.path, "rb");
+        if (f) {
+            if (fseek(f, 0, SEEK_END) == 0) {
+                const long len = ftell(f);
+                if (len > 0 && (unsigned long)len <= VK_PC_MAX_BYTES && fseek(f, 0, SEEK_SET) == 0 &&
+                    (data = malloc((size_t)len)) && fread(data, 1, (size_t)len, f) == (size_t)len)
+                    n = (size_t)len;
+            }
+            fclose(f);
+        }
+        if (n && !vk_pc_header_ok(data, n, &p)) {
+            VK_LOG("pipeline cache: %s is from another GPU or driver, starting over\n", s_pc.path);
+            n = 0;
+        }
+        s_pc.on_disk = n;
+        if (n) VK_LOG("pipeline cache: %zu bytes from %s\n", n, s_pc.path);
+        else   VK_LOG("pipeline cache: none yet, will be saved to %s\n", s_pc.path);
+    } else {
+        s_pc.path[0] = 0;
+        VK_LOG("pipeline cache: not saved (PORT_PIPELINE_CACHE=0 or no home folder)\n");
+    }
+    VkPipelineCacheCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+                                     .initialDataSize = n, .pInitialData = n ? data : NULL };
+    if (pvkCreatePipelineCache(s_vk.device, &ci, NULL, &s_pc.cache) != VK_SUCCESS) {
+        ci.initialDataSize = 0; ci.pInitialData = NULL;          /* data refused: empty */
+        if (pvkCreatePipelineCache(s_vk.device, &ci, NULL, &s_pc.cache) != VK_SUCCESS)
+            s_pc.cache = VK_NULL_HANDLE;                       /* pipelines still work */
+    }
+    free(data);
+}
+
+/* Writes the cache if pipelines were created since the last write: to a
+ * temporary file first, so a crash mid-write leaves the old file. `force`
+ * skips the wait for the quiet period. Any thread. */
+static void vk_pc_save(int force)
+{
+    if (!s_pc.cache || !s_pc.path[0] || !__atomic_load_n(&s_pc.created, __ATOMIC_RELAXED)) return;
+    if (!force && vk_mono_ns() - __atomic_load_n(&s_pc.last_new, __ATOMIC_RELAXED) < VK_PC_QUIET_NS)
+        return;
+    if (pthread_mutex_trylock(&s_pc.mu)) return;
+    const u32 created = __atomic_exchange_n(&s_pc.created, 0, __ATOMIC_RELAXED);
+    size_t n = 0;
+    unsigned char* data = NULL;
+    int ok = created && pvkGetPipelineCacheData(s_vk.device, s_pc.cache, &n, NULL) == VK_SUCCESS &&
+             n && n <= VK_PC_MAX_BYTES && (data = malloc(n)) &&
+             pvkGetPipelineCacheData(s_vk.device, s_pc.cache, &n, data) == VK_SUCCESS;
+    if (ok && n == s_pc.on_disk) {               /* nothing new: leave the file alone */
+        VK_LOG("pipeline cache: up to date (%u pipelines this run, %.1f ms creating them)\n",
+               s_pc.total, s_pc.ns / 1e6);
+        free(data);
+        pthread_mutex_unlock(&s_pc.mu);
+        return;
+    }
+    if (ok) {
+        char tmp[1040];
+        snprintf(tmp, sizeof tmp, "%s.tmp", s_pc.path);
+        vk_pc_mkdirs(tmp);
+        FILE* f = fopen(tmp, "wb");
+        ok = f && fwrite(data, 1, n, f) == n;
+        if (f && fclose(f)) ok = 0;
+#ifdef _WIN32
+        if (ok) remove(s_pc.path);                 /* rename does not replace on Windows */
+#endif
+        ok = ok && rename(tmp, s_pc.path) == 0;
+        if (!ok) remove(tmp);
+        if (ok) s_pc.on_disk = n;
+    }
+    if (created)
+        VK_LOG("pipeline cache: %s %zu bytes (%u pipelines this run, %.1f ms creating them)\n",
+               ok ? "saved" : "could not save", n, s_pc.total, s_pc.ns / 1e6);
+    free(data);
+    pthread_mutex_unlock(&s_pc.mu);
+}
+
+static void vk_pc_note(long long t0)
+{
+    const long long t1 = vk_mono_ns();
+    __atomic_fetch_add(&s_pc.ns, t1 - t0, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&s_pc.total, 1, __ATOMIC_RELAXED);
+    __atomic_store_n(&s_pc.last_new, t1, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&s_pc.created, 1, __ATOMIC_RELAXED);
+}
+
+static VkResult vk_create_graphics_pipeline(const VkGraphicsPipelineCreateInfo* ci, VkPipeline* out)
+{
+    const long long t0 = vk_mono_ns();
+    const VkResult r = pvkCreateGraphicsPipelines(s_vk.device, s_pc.cache, 1, ci, NULL, out);
+    vk_pc_note(t0);
+    return r;
+}
+
+static VkResult vk_create_compute_pipeline(const VkComputePipelineCreateInfo* ci, VkPipeline* out)
+{
+    const long long t0 = vk_mono_ns();
+    const VkResult r = pvkCreateComputePipelines(s_vk.device, s_pc.cache, 1, ci, NULL, out);
+    vk_pc_note(t0);
+    return r;
+}
 
 /* ---------------------------------------------------------------------------
  * Loading
@@ -1190,7 +1384,7 @@ static VkPipeline vk_get_pipeline(int ztest, int zwrite, u32 cmp)
         .pDynamicState = &dy, .layout = s_vk.pipe_layout, .renderPass = s_vk.render_pass,
         .subpass = 0 };
     VkPipeline p = VK_NULL_HANDLE;
-    VkResult r = pvkCreateGraphicsPipelines(s_vk.device, VK_NULL_HANDLE, 1, &gci, NULL, &p);
+    VkResult r = vk_create_graphics_pipeline(&gci, &p);
     if (r != VK_SUCCESS) { VK_LOG("vkCreateGraphicsPipelines failed (%d)\n", (int)r); return VK_NULL_HANDLE; }
     s_vk.pipelines[slot] = p;
     return p;
@@ -1531,7 +1725,7 @@ static VkPipeline vk_guest_pipeline(int vs, int fs, int ztest, int zwrite, u32 c
         .pDynamicState = &dy, .layout = s_g.pipe_layout, .renderPass = s_vk.render_pass,
         .subpass = 0 };
     VkPipeline p = VK_NULL_HANDLE;
-    VkResult r = pvkCreateGraphicsPipelines(s_vk.device, VK_NULL_HANDLE, 1, &gci, NULL, &p);
+    VkResult r = vk_create_graphics_pipeline(&gci, &p);
     if (r != VK_SUCCESS) {
         VK_LOG("guest pipeline: vkCreateGraphicsPipelines failed (%d)\n", (int)r);
         return VK_NULL_HANDLE;
@@ -2234,7 +2428,7 @@ static int vk_fsr_pipeline(const uint32_t* code, size_t bytes, VkPipeline* out)
                    .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = m, .pName = "main" },
         .layout = s_vk.fsr_layout,
     };
-    const VkResult r = pvkCreateComputePipelines(s_vk.device, VK_NULL_HANDLE, 1, &ci, NULL, out);
+    const VkResult r = vk_create_compute_pipeline(&ci, out);
     pvkDestroyShaderModule(s_vk.device, m, NULL);
     return r == VK_SUCCESS ? 0 : -1;
 }
@@ -4069,8 +4263,7 @@ static VkPipeline vk_eng_variant(vk_eng_pipe* P, u32 topo_idx)
         .pViewportState = &vps, .pRasterizationState = &ras, .pMultisampleState = &ms,
         .pDepthStencilState = &ds, .pColorBlendState = &cb, .pDynamicState = &dy,
         .layout = layout, .renderPass = rp, .subpass = 0 };
-    if (pvkCreateGraphicsPipelines(s_vk.device, VK_NULL_HANDLE, 1, &gci, NULL,
-                                   &P->variant[topo_idx]) != VK_SUCCESS) {
+    if (vk_create_graphics_pipeline(&gci, &P->variant[topo_idx]) != VK_SUCCESS) {
         VK_LOG("engine: vkCreateGraphicsPipelines failed\n");
         P->variant[topo_idx] = VK_NULL_HANDLE;
     }
@@ -4607,6 +4800,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
     if (s_vk.windowed && vk_load_wsi_device_functions())
         vk_window_drop("the driver has no swapchain functions");
     pvkGetDeviceQueue(s_vk.device, s_vk.queue_family, 0, &s_vk.queue);
+    vk_pc_open();
 
     VkCommandPoolCreateInfo pci = { .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                                     .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -4749,6 +4943,9 @@ void rsx_vulkan_backend_shutdown(void)
         if (s_vk.present_fence) pvkDestroyFence(s_vk.device, s_vk.present_fence, NULL);
         if (s_vk.window_fence)  pvkDestroyFence(s_vk.device, s_vk.window_fence, NULL);
         if (s_vk.present_pool)  pvkDestroyCommandPool(s_vk.device, s_vk.present_pool, NULL);
+        vk_pc_save(1);
+        if (s_pc.cache) pvkDestroyPipelineCache(s_vk.device, s_pc.cache, NULL);
+        s_pc.cache = VK_NULL_HANDLE;
         pvkDestroyDevice(s_vk.device, NULL);
     }
     if (s_vk.instance && pvkDestroyInstance) pvkDestroyInstance(s_vk.instance, NULL);
@@ -4816,6 +5013,7 @@ int rsx_vulkan_backend_pump_messages(void)
      * still running, and static destructors or a Vulkan teardown under them
      * can hang or crash. The logs are flushed first. */
     if (quit) {
+        vk_pc_save(1);
         printf("[RSX vulkan] window closed, exiting\n");
         fflush(NULL);
         _exit(0);
@@ -4863,6 +5061,7 @@ void rsx_vulkan_backend_present_begin(void)
     if (s_vk.eng_active) rsx_draw_engine_present();
     else                 vk_cb_present(&s_vk, 0);
     s_vk.present_split = 0;
+    vk_pc_save(0);
 }
 
 void rsx_vulkan_backend_present_finish(void)
