@@ -1991,6 +1991,11 @@ static void vk_window_open(const char* title)
 #ifdef _WIN32
     int video = SDL_InitSubSystem(SDL_INIT_VIDEO);
 #else
+    /* The window's Wayland app_id and X11 WM_CLASS name the AppImage's
+     * battride-recomp.desktop, so docks and Alt+Tab show its name and icon
+     * rather than the executable's. SDL 2.0.20 reads these variables. */
+    setenv("SDL_VIDEO_WAYLAND_WMCLASS", "battride-recomp", 0);
+    setenv("SDL_VIDEO_X11_WMCLASS", "battride-recomp", 0);
     int forced_wayland = 0;
     if (getenv("WAYLAND_DISPLAY") && !getenv("SDL_VIDEODRIVER")) {
         setenv("SDL_VIDEODRIVER", "wayland", 1);
@@ -2012,7 +2017,7 @@ static void vk_window_open(const char* title)
     vk_display_options();
     /* Created as a window, then switched, so exclusive fullscreen can pick
      * its video mode first and Alt+Enter has a window size to return to. */
-    s_vk.window = SDL_CreateWindow(title && title[0] ? title : "ps3recomp",
+    s_vk.window = SDL_CreateWindow(title && title[0] ? title : "Battride War",
                                    SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                    s_vk.win_w, s_vk.win_h,
                                    SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
@@ -4543,7 +4548,7 @@ static int vk_init_all(u32 width, u32 height, const char* title)
     if (vk_load_library()) return -1;
 
     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-                              .pApplicationName = "ps3recomp", .pEngineName = "ps3recomp RSX",
+                              .pApplicationName = "Battride War", .pEngineName = "ps3recomp RSX",
                               .apiVersion = VK_API_VERSION_1_0 };
     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                                 .pApplicationInfo = &app };
