@@ -16,8 +16,7 @@ static inline uint64_t vm_read64_inl(uint64_t) __attribute__((always_inline));
 #if defined(__GNUC__) && (!defined(_WIN32) || defined(__MINGW32__))
 
 extern "C" {
-extern int port_ppu_store_inline_ok;
-extern uint32_t g_null_sweep_hi;
+extern uint32_t port_ppu_store_end;
 extern uint32_t g_barrier_sync_watch;
 extern const unsigned char* port_ppu_coh_bits;
 extern const int* port_ppu_coh_on;
@@ -27,10 +26,11 @@ static inline __attribute__((always_inline)) int port_ppu_store_fast(uint32_t ea
 {
     /* Aligned 1/2/4/8-byte stores cannot cross a 128-byte reservation line.
      * All raw SPU windows, low/null addresses, unaligned stores, bounds errors
-     * and active diagnostics are delegated to the original accessor. */
-    if (!port_ppu_store_inline_ok || g_null_sweep_hi || g_barrier_sync_watch ||
-        ea < 0x10000u || ea >= 0xE0000000u || (ea & (n - 1u)) ||
-        (ppu_vm_size && (uint64_t)ea + n > ppu_vm_size)) return 0;
+     * and active diagnostics are delegated to the original accessor. The
+     * diagnostics, null-sweep and bounds conditions are one compare against
+     * port_ppu_store_end (port_ppu_store_gate.h), as in store_wrap.c. */
+    if (g_barrier_sync_watch || (ea & (n - 1u)) ||
+        ea - 0x10000u >= port_ppu_store_end - 0x10000u) return 0;
     if (__atomic_load_n(port_ppu_coh_on, __ATOMIC_RELAXED)) {
         const uint32_t line = ea >> 7;
         if ((__atomic_load_n(&port_ppu_coh_bits[line >> 3], __ATOMIC_RELAXED) >> (line & 7u)) & 1u)

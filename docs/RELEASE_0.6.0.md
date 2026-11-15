@@ -114,7 +114,7 @@ and recorded in [PERFORMANCE.md](PERFORMANCE.md).
 |---|---|---|---|
 | 1 | ~~**`-O3` on chunks 021 and 015**~~ **Rejected November 15:** 48.8 against 50.3 fps, worst 5 s 39.8 against 39.9, p95 26.1 against 25.6 ms over three pairs on the integrated GPU ([PERFORMANCE.md](PERFORMANCE.md)). | 25% of `runTaskMain` | `CMakeLists.txt` (`PORT_HOT_PPU_O3`) |
 | 2 | ~~**Guarded fast memory path for the top caller functions**~~ **Rejected November 15:** wrapping `func_005AAC60` and `func_003C7A98` measured 49.1 against 48.2 fps (noise); profiled, the two functions with their helpers went from 6.05% to 5.65% of `runTaskMain`, as the helpers' cost is their checks and the access, not the call ([PERFORMANCE.md](PERFORMANCE.md)). | up to 4.4% | `scripts/build/generate.py`, `include/port_ppu_memory.h` |
-| 3 | **The pending inline change in `include/port_ppu_memory.h`**, done together with the PGO retrain of step 4 (it invalidates the profiles of the fast chunks). | part of the 16-17% | `include/port_ppu_memory.h` |
+| 3 | **The pending inline change in `include/port_ppu_memory.h`. Done November 15** with the PGO retrain of step 4. | part of the 16-17% | `include/port_ppu_memory.h` |
 | 4 | **Pipeline cache on disk. Done November 15:** one `VkPipelineCache` for all four `vkCreate*Pipelines` calls, kept in `~/.cache/battride-war-port/` or `%LOCALAPPDATA%\battride-war-port\`, one file per GPU. Time spent creating the 198 pipelines up to the first fight: GTX 1650 1,548 ms with no cache, 113 ms with only the driver's cache (as before), 13 ms with ours; integrated Radeon 462 / 8.5 / 4.5 ms. No fps change in the fight. Still to check on Windows, and whether it was the 945 ms hitch at 1,027 draws ([WINDOWS.md](WINDOWS.md)) ([PERFORMANCE.md](PERFORMANCE.md)). | loads; hitch | `port/graphics/vulkan_bridge.c` |
 
 **Dropped for 0.6.0** (under 3% of the limiting thread, or not on it): sleep
@@ -141,19 +141,23 @@ unwritten pages, and reusing converted vertices across frames.
 - [x] The `tools/` folder (unpacked RPCS3) is removed after **Stop** and
       Ctrl+C too (tested through `Runner.stop()`); RPCS3 is copied or
       downloaded again on the next import.
-- [ ] **Decision:** update phase A, i.e. drop the package version from the build
-      identity and keep the build folder between versions, so later updates
-      recompile only what changed. If it ships in 0.6.0, 0.6.1 already
-      updates in minutes; otherwise 0.6.1 still recompiles everything.
+- [x] **Decided November 15: update phase A moves to 0.6.1** (drop the package
+      version from the build identity and keep the build folder between
+      versions). 0.6.1 still recompiles everything once; later updates then
+      recompile only what changed.
 
 ## 4. PGO profiles, last
 
 Profiles are specific to each compiler, so there are two sets, retrained
 after every code change above.
 
-- [ ] **Linux** (the AppImage's GCC 11): apply the pending inline change in
-      `include/port_ppu_memory.h`, retrain with `scripts/perf/pgo_train.py`,
-      A/B against the current profiles (~3 h).
+- [x] **Linux** (the AppImage's GCC 11), November 15: the inline stores of
+      `include/port_ppu_memory.h` now use the `port_ppu_store_end` gate, and
+      the profiles were retrained on that code (`build-pgo11/pgo`, 93 files;
+      the previous ones in `build-pgo11/pgo-1028-port`). Three interleaved
+      pairs on the integrated GPU: 59.0 against 58.3 fps, worst 5 s 54.3
+      against 53.0 (better in every pair), p95 19.5 against 19.7 ms, frames
+      over 16.7 ms 1,831 against 1,956 ([PERFORMANCE.md](PERFORMANCE.md)).
 - [ ] **Windows** (MSYS2 GCC):
       `cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=generate`,
       `cmake --build build-pgo -j 2`,
@@ -218,6 +222,6 @@ to end on both GPUs.
 
 ## Open decisions
 
-1. Update phase A (step 3) in 0.6.0 or 0.6.1?
+1. ~~Update phase A (step 3) in 0.6.0 or 0.6.1?~~ 0.6.1 (decided November 15).
 2. `tsc=reliable` at boot on the test laptop, for measurement only?
 3. When is the Windows machine available for steps 1, 4, 5 and 6?
