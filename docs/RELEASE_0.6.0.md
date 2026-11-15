@@ -113,7 +113,7 @@ and recorded in [PERFORMANCE.md](PERFORMANCE.md).
 | # | Item | Measured cost | Where |
 |---|---|---|---|
 | 1 | ~~**`-O3` on chunks 021 and 015**~~ **Rejected November 15:** 48.8 against 50.3 fps, worst 5 s 39.8 against 39.9, p95 26.1 against 25.6 ms over three pairs on the integrated GPU ([PERFORMANCE.md](PERFORMANCE.md)). | 25% of `runTaskMain` | `CMakeLists.txt` (`PORT_HOT_PPU_O3`) |
-| 2 | **Guarded fast memory path for the top caller functions** instead of whole chunks (whole-chunk widening was rejected twice for code size): `func_005AAC60`, `func_003C7A98`, then the next ones while they pay. Needs a per-function switch in the generated code. | up to 4.4% | `scripts/build/generate.py`, `include/port_ppu_memory.h` |
+| 2 | ~~**Guarded fast memory path for the top caller functions**~~ **Rejected November 15:** wrapping `func_005AAC60` and `func_003C7A98` measured 49.1 against 48.2 fps (noise); profiled, the two functions with their helpers went from 6.05% to 5.65% of `runTaskMain`, as the helpers' cost is their checks and the access, not the call ([PERFORMANCE.md](PERFORMANCE.md)). | up to 4.4% | `scripts/build/generate.py`, `include/port_ppu_memory.h` |
 | 3 | **The pending inline change in `include/port_ppu_memory.h`**, done together with the PGO retrain of step 4 (it invalidates the profiles of the fast chunks). | part of the 16-17% | `include/port_ppu_memory.h` |
 | 4 | **Pipeline cache on disk** (`VkPipelineCache`; all four `vkCreate*Pipelines` calls pass `VK_NULL_HANDLE` today). No pipeline is created during the STG02 fight, so no fps gain there: it shortens scene loads after the first run and is the candidate cause of the 945 ms hitch at 1,027 draws ([WINDOWS.md](WINDOWS.md)). | loads; hitch | `port/graphics/vulkan_bridge.c` |
 
