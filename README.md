@@ -1,12 +1,12 @@
 # Battride War Recomp
 
-An **experimental** native Linux port of Kamen Rider: Battride War (Japan), **BLJS10220**, built with PS3Recomp 0.17.0 and Vulkan. This project is not affiliated with the game's rights holders.
+An **experimental** native Linux and Windows port of Kamen Rider: Battride War (Japan), **BLJS10220**, built with PS3Recomp 0.17.0 and Vulkan. This project is not affiliated with the game's rights holders.
 
 This repository contains the port's code, configuration, tests and instructions. **It does not include the game, ISO, EBOOT, firmware, keys, saves, a compiled game executable, or generated PPU/SPU sources.** You need your own copy of the Japan disc.
 
-**Download:** the [latest release](https://github.com/robertoqimin/battride-war-recomp/releases/latest) (v0.5.2) is an AppImage that imports your ISO, translates your own EBOOT and compiles the game on your computer. See [System requirements](#system-requirements-appimage).
+**Download:** the [latest release](https://github.com/robertoqimin/battride-war-recomp/releases/latest) (v0.6.0) has an AppImage for Linux and a zip for Windows. Both import your ISO, translate your own EBOOT and compile the game on your computer. See [System requirements](#system-requirements-appimage).
 
-**Windows:** a native Windows build is in progress on the `windows` branch. The opening mission plays through there, built from source with MSYS2; there is no Windows release yet. See [docs/WINDOWS.md](docs/WINDOWS.md).
+**Windows:** since v0.6.0 the release also has a Windows package, a zip with the launcher and its own compilers; extract it to a short folder such as `C:\Games` and open `BattrideWarRecomp.cmd`. See [docs/WINDOWS_PACKAGE.md](docs/WINDOWS_PACKAGE.md); building from source with MSYS2 is in [docs/WINDOWS.md](docs/WINDOWS.md).
 
 The project was called **Battride War Port** (repository `battride-war-port`) until v0.5.0. Old links redirect here, and the data folder keeps its old name, `~/.local/share/battride-war-port`, so existing installs and saves carry over.
 
@@ -100,8 +100,8 @@ On hosts whose libstdc++ is older than RPCS3 needs (below `GLIBCXX_3.4.32`, e.g.
 ## Using the AppImage
 
 ```sh
-chmod +x BattrideWarRecomp-v0.5.2-x86_64.AppImage
-./BattrideWarRecomp-v0.5.2-x86_64.AppImage
+chmod +x BattrideWarRecomp-v0.6.0-x86_64.AppImage
+./BattrideWarRecomp-v0.6.0-x86_64.AppImage
 ```
 
 The launcher has five pages:

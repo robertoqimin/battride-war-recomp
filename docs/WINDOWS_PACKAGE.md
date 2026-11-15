@@ -67,7 +67,7 @@ The package and the game it builds are not signed.
 
 ## Build the package
 
-From the MSYS2 UCRT64 shell, in a checkout of the `windows` branch with the
+From the MSYS2 UCRT64 shell, in a checkout of this repository with the
 packages from `docs/WINDOWS.md` plus `mingw-w64-ucrt-x86_64-{python-capstone,
 python-pycryptodome,python-gobject,gtk4,libadwaita,adwaita-icon-theme,ffmpeg}`,
 the original extracted disc under `game/` and the firmware codecs under
@@ -76,8 +76,8 @@ the original extracted disc under `game/` and the firmware codecs under
 ```bash
 python scripts/release/build_windows_package.py --stage ../BattrideWarRecomp \
     --sevenzip-dir "C:/Program Files/7-Zip" --bundle --pgo build-pgo/pgo-win
-python scripts/release/collect_windows_sources.py --package ../BattrideWarRecomp --out ../BattrideWarRecomp-sources.tar
-"/c/Program Files/7-Zip/7z.exe" a -tzip -mx=5 BattrideWarRecomp-windows.zip ../BattrideWarRecomp
+python scripts/release/collect_windows_sources.py --package ../BattrideWarRecomp --out ../BattrideWarRecomp-v0.6.0-windows-sources.tar
+"/c/Program Files/7-Zip/7z.exe" a -tzip -mx=5 BattrideWarRecomp-v0.6.0-windows.zip ../BattrideWarRecomp
 ```
 
 `--pgo` takes profiles from `scripts/perf/pgo_train.py` (see `docs/WINDOWS.md`);

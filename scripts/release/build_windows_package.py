@@ -217,7 +217,7 @@ p = P / 'game/PS3_DISC.SFB'
 if p.exists():
     manifest['PS3_DISC.SFB'] = {'size': p.stat().st_size, 'sha256': sha(p)}
 (S / 'app/disc-manifest.json').write_text(json.dumps(manifest, separators=(',', ':')))
-meta = {'version': '0.5.2-windows', 'cpu': 'built on the player computer, -march=native',
+meta = {'version': '0.6.0-windows', 'cpu': 'built on the player computer, -march=native',
         'elf_sha256': spec['eboot_sha256'], 'sdk_commit': spec['sdk_commit'],
         'rpcs3': json.loads((P / 'packaging/windows/rpcs3-windows.json').read_text()),
         'codecs': {p.name: sha(p) for p in (P / 'firmware/dev_flash/sys/external').glob('*.pic')},

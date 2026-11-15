@@ -1,6 +1,8 @@
 # Windows port
 
-The port is developed on the `windows` branch. Changes to the SDK go upstream
+The Windows port was developed on the `windows` branch and merged into `main`
+on November 14, 2026; the Windows package ships from v0.6.0
+([WINDOWS_PACKAGE.md](WINDOWS_PACKAGE.md)). Changes to the SDK go upstream
 to ps3recomp, since the build pins an SDK revision; until then they are kept as
 `patches/ps3recomp/0002-vulkan-backend-on-windows.patch`.
 
