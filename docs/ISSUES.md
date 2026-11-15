@@ -1,161 +1,161 @@
-# Erros, falhas e problemas reportados
+# Bugs, failures and reported problems
 
-Levantamento de tudo o que foi reportado até 25/10/2026, com a situação atual de cada item. "Resolvido" significa corrigido e medido nos testes feitos; não significa validado no jogo inteiro.
+Everything reported up to October 25, 2026, with the current state of each item. "Fixed" means corrected and measured in the tests that were run; it does not mean validated across the whole game.
 
-## Resumo
+## Summary
 
-| # | Problema | Área | Situação |
+| # | Problem | Area | State |
 |---|---|---|---|
-| 1 | Estouro do buffer de comandos gráficos (~19 MiB) | Gráficos / sincronização | Resolvido |
-| 2 | FPS muito baixo e variável em combate | Desempenho | Resolvido no combate medido (~58 fps de média em luta, pior trecho de 5 s ~47 fps) |
-| 3 | FPS cai ao andar e com multidões | Desempenho | Resolvido (MAILBOX; ver item 2 para os números atuais) |
-| 4 | Áudio com interrupções e estalos | Áudio | Parcial: ainda quebra em combate (teste manual) |
-| 5 | Brilho excessivo intermitente | Gráficos | Não reproduzido (clarões conferidos com o original) |
-| 6 | Cores e efeitos especiais incorretos | Gráficos | Parcial: batem com o original; um artefato de 1 frame visto |
-| 17 | Sombras incorretas | Gráficos | Resolvido na primeira missão |
-| 18 | Sombras em posição errada durante o gameplay | Gráficos | Resolvido na primeira missão |
-| 7 | Conclusão de missões | Gameplay | Validado na primeira missão (teste manual) |
-| 8 | Jogo completo não validado | Gameplay | Parcial: todos os 10 capítulos carregam e rodam; conclusão só validada na STG02 |
-| 9 | Estabilidade prolongada | Estabilidade | Parcial (~70 min e ~25 carregamentos de fase sem falhas) |
-| 10 | Quadros pesados limitados pela montagem de comandos do jogo | Desempenho | Em aberto (pior trecho de 5 s ~47 fps; meta de 60) |
-| 11 | Áudio depende do firmware local | Áudio | Limitação conhecida |
-| 12 | Codec ATRAC não exercitado | Áudio | Não usado em nenhum capítulo testado |
-| 19 | Áudio quebra na missão do capítulo 4 (STG08) | Áudio | Corrigido (com patch no SDK) |
-| 20 | Aviso do motor de som com 176566 Hz | Áudio | Em análise |
-| 13 | Encerramento limpo não validado em todos os caminhos | Estabilidade | Em aberto |
-| 14 | Processos de teste remanescentes contaminaram medições | Ferramentas de teste | Contornado |
-| 15 | Toques curtos do `PAD_FILE` perdidos com o jogo mais rápido | Ferramentas de teste | Contornado |
-| 16 | Personagem não se move pelo direcional | Ferramentas de teste | Contornado (`PORT_PAD_STICK_FILE`) |
+| 1 | Graphics command buffer overflow (~19 MiB) | Graphics / synchronization | Fixed |
+| 2 | Very low and unsteady frame rate in combat | Performance | Fixed in the measured fight (~58 fps average while fighting, worst 5 s ~47 fps) |
+| 3 | Frame rate drops while walking and with crowds | Performance | Fixed (MAILBOX; see item 2 for current numbers) |
+| 4 | Audio dropouts and crackles | Audio | Partial: still breaks in combat (manual test) |
+| 5 | Intermittent excessive brightness | Graphics | Not reproduced (flashes checked against the original) |
+| 6 | Wrong colours and special effects | Graphics | Partial: they match the original; one 1-frame artifact seen |
+| 17 | Wrong shadows | Graphics | Fixed in the first mission |
+| 18 | Shadows in the wrong place during gameplay | Graphics | Fixed in the first mission |
+| 7 | Completing missions | Gameplay | Validated in the first mission (manual test) |
+| 8 | Full game not validated | Gameplay | Partial: all 10 chapters load and run; completion validated only in STG02 |
+| 9 | Long-run stability | Stability | Partial (~70 min and ~25 stage loads without failures) |
+| 10 | Heavy frames limited by the game's command assembly | Performance | Open (worst 5 s ~47 fps; target 60) |
+| 11 | Audio depends on the local firmware | Audio | Known limitation |
+| 12 | ATRAC codec not exercised | Audio | Not used in any tested chapter |
+| 19 | Audio breaks in the chapter 4 mission (STG08) | Audio | Fixed (with an SDK patch) |
+| 20 | Sound engine warning at 176566 Hz | Audio | Under analysis |
+| 13 | Clean shutdown not validated on every path | Stability | Open |
+| 14 | Leftover test processes contaminated measurements | Test tools | Worked around |
+| 15 | Short `PAD_FILE` presses lost with the faster game | Test tools | Worked around |
+| 16 | Character does not move with the d-pad | Test tools | Worked around (`PORT_PAD_STICK_FILE`) |
 
-## Detalhes
+## Details
 
-### 1. Estouro do buffer de comandos gráficos — Resolvido
-- **Sintoma:** a missão inicial gerava ~19 MiB de comandos RSX e estourava as duas arenas de 4 MiB do jogo, sobrescrevendo dados do renderizador. O contorno anterior alocava 2×32 MiB extras.
-- **Causa:** o `sys_lwcond` do SDK espera em polling de 1 ms e seus `signal` não fazem nada. A thread de render do jogo espera uma única vez pelo evento de frame, então nunca bloqueava e redesenhava o frame inteiro dezenas de vezes por flip (708 renderizações contra 9 flips em 15 s).
-- **Correção:** `sys_lwcond` bloqueante em `stubs.cpp` (commit `3ce00f8`). O frame da missão cai para um pico de ~0,5 MiB. A expansão de buffers ficou desligada por padrão (`PORT_GCM_EXPAND_BUFFERS=1` a reativa).
+### 1. Graphics command buffer overflow — Fixed
+- **Symptom:** the opening mission produced ~19 MiB of RSX commands and overflowed the game's two 4 MiB arenas, overwriting renderer data. The earlier workaround allocated an extra 2×32 MiB.
+- **Cause:** the SDK's `sys_lwcond` waits by polling every 1 ms and its `signal` does nothing. The game's render thread waits only once for the frame event, so it never blocked and redrew the whole frame dozens of times per flip (708 renders against 9 flips in 15 s).
+- **Fix:** a blocking `sys_lwcond` in `stubs.cpp` (commit `3ce00f8`). The mission's frame drops to a peak of ~0.5 MiB. The buffer expansion is off by default (`PORT_GCM_EXPAND_BUFFERS=1` turns it back on).
 
-### 2. FPS baixo em combate — Resolvido
-- **Sintoma:** ~6 fps em combate.
-- **Causas e correções (commits `75611ca` e `05af18b`):**
-  - build inteiro em `-O0` → `-O2`;
-  - um envio com espera na GPU por draw → comandos Vulkan em lotes, com dois slots;
-  - checagens de depuração em cada escrita de memória do jogo → saem cedo quando não há nenhuma ativa;
-  - `getenv` no laço do FIFO → lido uma vez só;
-  - relógio de frames com espera fixa e present bloqueante → acordado pelo jogo, present sem esperar a GPU.
-- **Resultado:** ~30 fps em combate (29,7 / 30,3 / 30,7).
-- **Teste manual (23/10/2026):** com muitos inimigos na tela o FPS ainda cai para ~20. Ver item 10.
+### 2. Low frame rate in combat — Fixed
+- **Symptom:** ~6 fps in combat.
+- **Causes and fixes (commits `75611ca` and `05af18b`):**
+  - the whole build at `-O0` → `-O2`;
+  - one submission with a GPU wait per draw → batched Vulkan commands, with two slots;
+  - debug checks on every guest memory write → they return early when none is active;
+  - `getenv` in the FIFO loop → read once;
+  - a frame clock with a fixed wait and a blocking present → woken by the game, present without waiting for the GPU.
+- **Result:** ~30 fps in combat (29.7 / 30.3 / 30.7).
+- **Manual test (October 23, 2026):** with many enemies on screen the frame rate still falls to ~20. See item 10.
 
-### 3. Queda de FPS ao andar — Resolvido
-- **Sintoma:** 20–24 fps andando e em cenas com muitos inimigos (relatado no teste manual).
-- **Causa:** o present da janela em modo FIFO (vsync) bloqueava a thread do FIFO até o vblank, então um frame de pouco mais de 33 ms esperava até 50 ms.
-- **Correção:** modo MAILBOX quando o driver oferece (commit `22cab93`); `PS3RECOMP_VK_VSYNC=1` mantém o FIFO.
-- **Resultado:** 38 fps de média e 29,4 no percentil 10 em 150 s de luta e caminhada; ~35 fps de média numa sessão de ~32 min.
+### 3. Frame rate drop while walking — Fixed
+- **Symptom:** 20–24 fps while walking and in scenes with many enemies (reported in the manual test).
+- **Cause:** the window's present in FIFO mode (vsync) blocked the FIFO thread until vblank, so a frame of just over 33 ms waited up to 50 ms.
+- **Fix:** MAILBOX mode when the driver offers it (commit `22cab93`); `PS3RECOMP_VK_VSYNC=1` keeps FIFO.
+- **Result:** 38 fps average and 29.4 at the 10th percentile over 150 s of fighting and walking; ~35 fps average in a ~32 min session.
 
-### 4. Áudio com interrupções — Resolvido nos trechos testados
-- **Sintoma:** cortes e estalos; o som saía em rajadas (4 blocos de som, 8 de silêncio).
-- **Causa:** a tarefa de áudio do SPU, rejeitada pelo tradutor estático, rodava interpretada e preenchia só ~1/3 dos blocos a tempo. Em combate, quase todo o trabalho é o codec `flashMP3.pic`, também interpretado.
-- **Correção (commit `08c0e61`):**
-  - tradução da tarefa abaixo de `0x171D0` e do codec MP3 (`scripts/lift_audio_spu.py`);
-  - interpretador com cache de decodificação;
-  - camada de canais sem `getenv` por acesso;
-  - código SPU compilado com `-msse4.1`.
-- **Resultado:** zero blocos vazios na música do título e em 45 s de combate.
-- **Ressalvas:** sessões longas e outras fases não foram verificadas.
-- **Teste manual (23/10/2026):** o áudio ainda quebra em combate. Como coincide com as quedas de FPS, a suspeita é disputa de CPU: a thread de áudio do SPU e a thread de render do jogo ficam ambas perto de 100%.
+### 4. Audio dropouts — Fixed in the tested sections
+- **Symptom:** dropouts and crackles; the sound came in bursts (4 blocks of sound, 8 of silence).
+- **Cause:** the SPU audio task, rejected by the static translator, ran interpreted and filled only ~1/3 of the blocks in time. In combat almost all the work is the `flashMP3.pic` codec, also interpreted.
+- **Fix (commit `08c0e61`):**
+  - translation of the task below `0x171D0` and of the MP3 codec (`scripts/build/lift_audio_spu.py`);
+  - an interpreter with a decode cache;
+  - a channel layer without `getenv` per access;
+  - SPU code compiled with `-msse4.1`.
+- **Result:** zero empty blocks in the title music and in 45 s of combat.
+- **Caveats:** long sessions and other stages were not checked.
+- **Manual test (October 23, 2026):** the audio still breaks in combat. Since it coincides with the frame rate drops, the suspect is CPU contention: the SPU audio thread and the game's render thread are both near 100%.
 
-### 5. Brilho excessivo intermitente — Não reproduzido
-- **Relato inicial:** um frame posterizado em amarelo e vermelho na entrada da missão, quando ainda havia redesenho repetido (item 1).
-- **Verificação (25/10/2026):** um frame por segundo durante boot, menus, cena de abertura e combate com golpes especiais, medindo brilho médio, pixels estourados e número de cores. Nenhum frame posterizado (todos os frames de combate têm 180-230 mil cores). Os únicos frames brancos são o fade para branco e o clarão da cena de abertura ("俺の名は『ウィザード』"), e uma gravação do jogo original (YouTube `u4YixUZPH30`, a partir de 3:05) tem a mesma sequência: fade para branco, cerca de 2 s de preto e novo clarão que se desfaz na cena do portão. Os clarões dos golpes especiais têm o tamanho dos do original.
-- **Conclusão:** não reproduzido nas versões atuais. O chão escurecido pelas sombras erradas (item 17) mudava bastante o brilho da cena e pode ter contribuído para o relato.
+### 5. Intermittent excessive brightness — Not reproduced
+- **First report:** one posterized yellow and red frame at the mission entrance, while the repeated redraw (item 1) still happened.
+- **Check (October 25, 2026):** one frame per second through boot, menus, the opening scene and combat with special moves, measuring average brightness, clipped pixels and colour count. No posterized frame (every combat frame has 180-230 thousand colours). The only white frames are the fade to white and the flash of the opening scene ("俺の名は『ウィザード』"), and a recording of the original game (YouTube `u4YixUZPH30`, from 3:05) has the same sequence: fade to white, about 2 s of black and a new flash that dissolves into the gate scene. The special moves' flashes are the size of the original's.
+- **Conclusion:** not reproduced in current versions. The floor darkened by the wrong shadows (item 17) changed the scene's brightness a lot and may have contributed to the report.
 
-### 6. Cores e efeitos especiais incorretos — Parcial
-- **Verificação (25/10/2026):** comparado com a mesma gravação do original: os efeitos dos golpes (círculos mágicos vermelhos, fogo, água do estilo Water, o braço-canhão) e a iluminação do combate batem. A cena do holofote só ficou igual depois das correções de sombra (item 17).
-- **Ainda visto:** num único frame, no início de um golpe especial, um polígono grande, bege e sem textura cortou a parte de baixo da tela na diagonal. Não se repetiu em outras capturas; a causa não foi encontrada.
+### 6. Wrong colours and special effects — Partial
+- **Check (October 25, 2026):** compared with the same recording of the original: the moves' effects (red magic circles, fire, the Water style's water, the cannon arm) and the combat lighting match. The spotlight scene only matched after the shadow fixes (item 17).
+- **Still seen:** in a single frame, at the start of a special move, a large untextured beige polygon cut diagonally across the bottom of the screen. It did not happen again in other captures; the cause was not found.
 
-### 17. Sombras incorretas — Resolvido na primeira missão
-- **Sintoma:** os personagens não projetavam sombra, e o chão dentro do alcance do *shadow map* ficava todo escurecido; fora dele (uma região retangular com borda reta) ficava claro.
-- **Causa:** o jogo desenha as silhuetas dos personagens num *shadow map* Z24S8 de 1024×1024 e o amostra na cena (unidade t3, formato DEPTH24_D8, `zfunc` LESS, filtro linear). No RSX a comparação de profundidade da textura é `profundidade armazenada OP referência`; o auxiliar do SDK fazia `referência OP profundidade armazenada`. Com a direção trocada, o resultado ficava invertido em todo pixel, e as contas do shader do jogo marcavam o chão inteiro como sombreado.
-- **Correção:** `rsx_engine_bridge.c` inverte a direção do `zfunc` (LESS↔GREATER, LEQUAL↔GEQUAL) antes de traduzir o shader. `PORT_SHADOW_REVERSE=0` volta ao comportamento anterior para comparação.
-- **Segunda causa (borda):** o shadow map usa o modo de repetição BORDER com cor de borda `0xFFFFFFFF` (profundidade 1,0: fora do mapa nada faz sombra). O backend Vulkan usava sempre borda preta, e tudo fora do mapa lia profundidade 0 e ficava "na sombra": na cena de abertura, o chão do holofote aparecia como uma faixa clara de bordas retas em vez de uma mancha redonda. `eng_decode_sampler` agora leva a classe da cor de borda (preto transparente, preto opaco ou branco opaco, as cores fixas do Vulkan) até `vk_eng_sampler`.
-- **Verificado:** comparado com uma gravação do jogo original (YouTube `u4YixUZPH30`, a partir de 3:05): a cena do holofote fica praticamente idêntica (mancha de luz redonda e a sombra longa do personagem), e no combate da STG02 o chão fica iluminado com a sombra de cada personagem a partir dos pés. Desempenho igual. Outras missões não foram verificadas.
+### 17. Wrong shadows — Fixed in the first mission
+- **Symptom:** characters cast no shadow, and the floor inside the shadow map's reach was all darkened; outside it (a rectangular region with a straight edge) it was bright.
+- **Cause:** the game draws the characters' silhouettes into a 1024×1024 Z24S8 shadow map and samples it in the scene (unit t3, DEPTH24_D8 format, `zfunc` LESS, linear filter). On the RSX the texture's depth comparison is `stored depth OP reference`; the SDK's helper did `reference OP stored depth`. With the direction swapped, the result was inverted on every pixel, and the game's shader maths marked the whole floor as shadowed.
+- **Fix:** `rsx_engine_bridge.c` reverses the `zfunc` direction (LESS↔GREATER, LEQUAL↔GEQUAL) before translating the shader. `PORT_SHADOW_REVERSE=0` restores the earlier behaviour for comparison.
+- **Second cause (the edge):** the shadow map uses the BORDER wrap mode with border colour `0xFFFFFFFF` (depth 1.0: nothing casts a shadow outside the map). The Vulkan backend always used a black border, so everything outside the map read depth 0 and was "in shadow": in the opening scene the spotlight's floor appeared as a bright straight-edged band instead of a round patch. `eng_decode_sampler` now carries the border colour class (transparent black, opaque black or opaque white, Vulkan's fixed colours) through to `vk_eng_sampler`.
+- **Verified:** compared with a recording of the original game (YouTube `u4YixUZPH30`, from 3:05): the spotlight scene is practically identical (a round patch of light and the character's long shadow), and in the STG02 fight the floor is lit with each character's shadow starting at their feet. Same performance. Other missions were not checked.
 
-### 7. Conclusão de missões — Validado na primeira missão
-- **Teste manual (23/10/2026):** a primeira missão (STG02) foi concluída jogando manualmente, e ao terminar o jogo foi para a seleção de missões normalmente. As demais missões não foram testadas.
-- **Tentativa automatizada anterior:** numa sessão automatizada de ~30 min na STG02, foram 350 inimigos derrotados e combo máximo de 50, mas o objetivo ficou em "先へ進め" (avance) até o tempo da missão (30 min) acabar.
-- **Conclusão:** o teste manual mostrou que a falha era do piloto automático, não do port.
+### 7. Completing missions — Validated in the first mission
+- **Manual test (October 23, 2026):** the first mission (STG02) was completed by hand, and when it ended the game went to mission select normally. The other missions were not tested.
+- **Earlier automated attempt:** in a ~30 min automated session in STG02, 350 enemies were defeated with a top combo of 50, but the objective stayed at "先へ進め" (move on) until the mission's time (30 min) ran out.
+- **Conclusion:** the manual test showed the failure was the autopilot's, not the port's.
 
-### 8. Jogo completo — Parcial
-- **Teste (29/10/2026):** com um save do RPCS3 que tem o modo história inteiro concluído (todos os modos do menu destravados), a primeira missão de cada um dos 10 capítulos do Chronicle foi aberta e jogada pelo piloto automático (`PAD_FILE`/`PORT_PAD_STICK_FILE`, 1,5 a 8 min cada), numa única sessão de ~70 min, com a janela aberta.
-- **Resultado:**
+### 8. Full game — Partial
+- **Test (October 29, 2026):** with an RPCS3 save that has the whole story mode completed (every menu mode unlocked), the first mission of each of the Chronicle's 10 chapters was opened and played by the autopilot (`PAD_FILE`/`PORT_PAD_STICK_FILE`, 1.5 to 8 min each), in a single ~70 min session with the window open.
+- **Result:**
 
-| Capítulo | Fase | Resultado |
+| Chapter | Stage | Result |
 |---|---|---|
-| Prólogo | STG02 | Carrega e roda; cena do holofote e combate normais |
-| 英雄の目覚め (1) | STG02 | Carrega e roda |
-| 英雄の目覚め (2) | STG09 | Carrega e roda |
-| 英雄の目覚め (3) | STG03 | Carrega e roda; missão de moto com tempo: o piloto automático não termina a tempo e o jogo mostra "Mission Failed" e a tela de resultado normalmente |
-| Chronicle 1章 | STG05 | Carrega e roda |
-| Chronicle 2章 | STG11 | Carrega e roda; pilotagem da moto normal |
-| Chronicle 3章 | STG10 | Carrega e roda |
-| Chronicle 4章 | STG08 | Carrega e roda; **áudio quebra a missão inteira** (item 19) |
-| Chronicle 5章 | STG12 | Carrega e roda |
-| Capítulo final | STG19 | Carrega e roda 8 min: lutas contra Decade e Skull, troca de formas, especiais; o W foi derrotado e o jogo foi para o resultado e "tentar de novo" normalmente |
+| Prologue | STG02 | Loads and runs; spotlight scene and combat normal |
+| 英雄の目覚め (1) | STG02 | Loads and runs |
+| 英雄の目覚め (2) | STG09 | Loads and runs |
+| 英雄の目覚め (3) | STG03 | Loads and runs; timed motorbike mission: the autopilot does not finish in time and the game shows "Mission Failed" and the result screen normally |
+| Chronicle 1章 | STG05 | Loads and runs |
+| Chronicle 2章 | STG11 | Loads and runs; motorbike riding normal |
+| Chronicle 3章 | STG10 | Loads and runs |
+| Chronicle 4章 | STG08 | Loads and runs; **audio breaks for the whole mission** (item 19) |
+| Chronicle 5章 | STG12 | Loads and runs |
+| Final chapter | STG19 | Loads and runs for 8 min: fights against Decade and Skull, form changes, specials; W was defeated and the game went to the result and "try again" normally |
 
-- Nenhum travamento ou erro do port no log; média de 55 fps na sessão inteira (59,4 fps nos 8 min da missão final).
-- **Falta:** concluir as missões (o piloto automático não termina missões; ver item 7), as demais ~20 missões dos capítulos, o final e os créditos (`MEN_ENDING.msf`, `MEN_STAFFROLL.msf`), Rider Road, Free Mission e Galeria. Isso exige jogar manualmente.
+- No hang or port error in the log; 55 fps average over the whole session (59.4 fps in the final mission's 8 min).
+- **Missing:** completing the missions (the autopilot does not finish missions; see item 7), the chapters' other ~20 missions, the ending and credits (`MEN_ENDING.msf`, `MEN_STAFFROLL.msf`), Rider Road, Free Mission and the Gallery. That needs playing by hand.
 
-### 9. Estabilidade prolongada — Parcial
-Houve ~30 min de missão contínua sem travamento e sem erros no log, até o limite de tempo do script de teste. Sessões mais longas, troca de fases e carregamentos repetidos não foram testados.
+### 9. Long-run stability — Partial
+There were ~30 min of continuous mission without a hang and without errors in the log, up to the test script's time limit. Longer sessions, stage changes and repeated loads were not tested.
 
-### 10. Quadros pesados limitados pela montagem de comandos do jogo — Em aberto
-- **Medido (25/10/2026, linha do tempo `PS3_FTRACE` em luta na STG02):** um quadro é o processamento do FIFO pela thread `frame_clock` (~12,5 ms) seguido do trabalho da thread `main` depois da fence do quadro (~5,6 ms). Nos quadros acima de 20 ms, o FIFO continua em ~13 ms e a `main` passa a ~10,5 ms; 72% dela está na montagem da lista de comandos (`func_005B2930`, bloco traduzido `020`). A afirmação abaixo, de 24/10, de que a thread principal estava saturada a 98%, não vale mais: em combate nenhuma thread passa de ~80%, e elas esperam umas pelas outras.
-- **Feito em 25/10/2026** (A/B intercalado, `scripts/bench_combat.py`): núcleo físico próprio para as threads mais ocupadas (`thread_affinity.c`); render targets que eram recriados todo quadro mantidos em cache; busca de vértices, leitura de índices e hash do pipeline mais rápidos no processamento do FIFO; caminho rápido para todas as escritas do código traduzido (`store_wrap.c`). Média em luta: ~48 → ~58 fps; pior trecho de 5 s: ~45 → ~47.
-- **Testados e rejeitados em 25/10/2026:** GameMode (sem efeito nesta máquina), C do runtime em `-O3`, folga de timer de 1 µs, intervalo menor entre publicações de fence, caminho rápido inline nos blocos 016 e 020, PGO retreinado em luta e GCC 12.3 (58,2 contra 58,4 fps).
-- **Próximo passo possível:** melhorar o código que o tradutor do ps3recomp gera para a montagem de comandos (manter registradores do PPU em variáveis locais etc.), uma mudança no SDK.
+### 10. Heavy frames limited by the game's command assembly — Open
+- **Measured (October 25, 2026, `PS3_FTRACE` timeline while fighting in STG02):** a frame is the FIFO processing by the `frame_clock` thread (~12.5 ms) followed by the `main` thread's work after the frame fence (~5.6 ms). In frames over 20 ms the FIFO stays at ~13 ms and `main` goes to ~10.5 ms; 72% of it is assembling the command list (`func_005B2930`, translated chunk `020`). The statement below, from October 24, that the main thread was saturated at 98% no longer holds: in combat no thread goes above ~80%, and they wait for each other.
+- **Done on October 25, 2026** (interleaved A/B, `scripts/perf/bench_combat.py`): a physical core of their own for the busiest threads (`thread_affinity.c`); render targets that were recreated every frame kept in a cache; faster vertex fetch, index reads and pipeline hashing in the FIFO processing; a fast path for every store of the translated code (`store_wrap.c`). Average while fighting: ~48 → ~58 fps; worst 5 s: ~45 → ~47.
+- **Tried and rejected on October 25, 2026:** GameMode (no effect on this machine), the runtime's C at `-O3`, a 1 µs timer slack, a shorter interval between fence publications, the inline fast path in chunks 016 and 020, PGO retrained in combat, and GCC 12.3 (58.2 against 58.4 fps).
+- **Possible next step:** improving the code ps3recomp's translator generates for the command assembly (keeping PPU registers in local variables, etc.), a change in the SDK.
 
-#### Histórico (24/10/2026)
-- **Medido (24/10/2026, perfil de CPU por thread em combate pesado na STG02):** sempre que o fps cai abaixo de ~50, a thread PPU principal do jogo fica em 98% de um núcleo; áudio (~45%), FIFO/Vulkan (~50%) e a outra thread PPU (~30%) têm folga. O fps nas quedas depende só da velocidade dessa thread.
-- **Feito desde então** (detalhes em `docs/PERFORMANCE.md`): leituras de relógio removidas dos locks de mutex do jogo (frames acima de 33 ms: 52 → 17), código traduzido em huge pages, e PGO treinado na primeira missão (pior trecho de 5 s: 35 → 43 fps na AppImage). Testados e rejeitados: huge pages na memória do jogo e o caminho rápido de memória em mais blocos gerados.
-- **Ainda em aberto:** um teste manual antes da v0.4.0 relatou ~25 fps nas lutas mais pesadas no Ryzen 5 4600H (~40 fps num Ryzen 7 5700X); não foi remedido com a v0.4.x. Opções restantes: instruções FMA (`-mfma`, uma decisão de portabilidade) e um GCC mais novo no toolchain da AppImage (~+5% medido com o GCC 16).
+#### History (October 24, 2026)
+- **Measured (October 24, 2026, per-thread CPU profile in heavy STG02 combat):** whenever the frame rate drops below ~50, the game's main PPU thread is at 98% of a core; audio (~45%), FIFO/Vulkan (~50%) and the other PPU thread (~30%) have headroom. The frame rate in the drops depends only on that thread's speed.
+- **Done since** (details in `docs/PERFORMANCE.md`): clock reads removed from the game's mutex locks (frames over 33 ms: 52 → 17), translated code in huge pages, and PGO trained on the first mission (worst 5 s: 35 → 43 fps in the AppImage). Tried and rejected: huge pages for the game's memory and the fast memory path in more generated chunks.
+- **Still open:** a manual test before v0.4.0 reported ~25 fps in the heaviest fights on the Ryzen 5 4600H (~40 fps on a Ryzen 7 5700X); it was not remeasured with v0.4.x. Remaining options: FMA instructions (`-mfma`, a portability decision) and a newer GCC in the AppImage's toolchain (~+5% measured with GCC 16).
 
-### 11. Áudio depende do firmware local — Limitação conhecida
-A tradução do codec MP3 só é gerada se o `flashMP3.pic` local tiver o SHA-256 verificado. Sem ele, o codec fica interpretado e o combate provavelmente volta a ter cortes. Sem nenhum codec, a tarefa de áudio para (ver `README_FIRMWARE.md`).
+### 11. Audio depends on the local firmware — Known limitation
+The MP3 codec's translation is generated only if the local `flashMP3.pic` has the verified SHA-256. Without it the codec runs interpreted and combat will probably have dropouts again. Without any codec the audio task stops (see `docs/FIRMWARE.md`).
 
-### 12. Codec ATRAC — Não usado nas fases testadas
-O jogo não abriu o `flashATRAC.pic` nos testes, nem na sessão de 29/10/2026 que passou pelos 10 capítulos. Todas as músicas (`sound/BGM/BGM/*.msf`) são MPEG estéreo; se o ATRAC for usado em algum lugar, roda interpretado e pode ter cortes.
+### 12. ATRAC codec — Not used in the tested stages
+The game did not open `flashATRAC.pic` in the tests, nor in the October 29, 2026 session through the 10 chapters. All the music (`sound/BGM/BGM/*.msf`) is stereo MPEG; if ATRAC is used somewhere, it runs interpreted and may drop out.
 
-### 19. Áudio quebra na missão do capítulo 4 (STG08) — Corrigido (com patch no SDK)
-- **Sintoma (29/10/2026):** na primeira missão do Chronicle 4章 ("近くて遠い", fase `stg08.gtc`), 60-75% dos blocos de áudio chegam vazios do começo ao fim da missão (`PORT_AUDIO_STATS`: ~680 underruns de 938 por linha), começando já em `MIS_ENTER.msf`. Em todas as outras fases testadas ficam abaixo de 0,4%.
-- **Não é a música:** `MIS_EVENT_BATTLE_BOSS.msf`, que toca nessa missão, também tocou na missão final sem cortes.
-- **Pista:** no log, cada execução da tarefa de áudio do SPU (`[spu_workload] WAIT_SIGNAL ... ran=`) leva 29-39 ms durante essa missão, contra 0-6 ms no resto da sessão.
-- **Causa:** `PORT_SPU_PROFILE` mostrou ~3,7 bilhões de passos interpretados em 0x37000-0x397C0. Ali a tarefa carrega, sem relocação e a partir de LS 0x36F80, um módulo SPU de 10 KB embutido no `EBOOT.ELF` (offset 0x686D00; não é codec do firmware). Essa fase roda o módulo em todo bloco de áudio.
-- **Correção, em duas partes:**
-  - `scripts/lift_audio_spu.py` traduz também esse módulo (72 funções, nenhuma instrução sem suporte), como já fazia com o `flashMP3.pic`; `spu_bridge.c` aceita várias sobreposições. Sozinho, isso baixou as falhas para 2-20%: o código traduzido do módulo virou ~46% do tempo da thread de áudio.
-  - No SDK (`runtime/spu/spu_helpers.h`), `rotqby`, `rotqbyi`, `shlqbyi` e `cwd` não tinham caminho vetorial em x86 (só em NEON) e viravam laços byte a byte. Com versões SSE4.1 (`pshufb`), idênticas à referência em teste exaustivo com gcc e clang, a função mais quente do módulo caiu de 11037 para 8244 instruções.
-- **Resultado (build PGO, 29/10/2026):** na mesma missão, 0,2% de underruns no combate da primeira fase e 0 em 3 minutos da segunda; a missão final continua limpa (8 de 26264). O chefe dessa missão não foi alcançado pelo piloto automático.
-- **SDK:** a mudança fica em `patches/ps3recomp/0001-spu-helpers-sse41-byte-rotates.patch`, aplicada sobre a revisão fixada em `recompile.json` pelo `scripts/build_appimage.py` e, em builds locais, à mão (`docs/BUILD.md`); o CMake para se ela faltar.
+### 19. Audio breaks in the chapter 4 mission (STG08) — Fixed (with an SDK patch)
+- **Symptom (October 29, 2026):** in the first mission of Chronicle 4章 ("近くて遠い", stage `stg08.gtc`), 60-75% of the audio blocks arrive empty from the start to the end of the mission (`PORT_AUDIO_STATS`: ~680 underruns of 938 per line), starting already in `MIS_ENTER.msf`. In every other tested stage they stay under 0.4%.
+- **Not the music:** `MIS_EVENT_BATTLE_BOSS.msf`, which plays in this mission, also played in the final mission without dropouts.
+- **Clue:** in the log, each run of the SPU audio task (`[spu_workload] WAIT_SIGNAL ... ran=`) takes 29-39 ms during this mission, against 0-6 ms in the rest of the session.
+- **Cause:** `PORT_SPU_PROFILE` showed ~3.7 billion interpreted steps in 0x37000-0x397C0. There the task loads, without relocation and from LS 0x36F80, a 10 KB SPU module embedded in `EBOOT.ELF` (offset 0x686D00; not a firmware codec). This stage runs the module on every audio block.
+- **Fix, in two parts:**
+  - `scripts/build/lift_audio_spu.py` also translates that module (72 functions, no unsupported instruction), as it already did with `flashMP3.pic`; `spu_bridge.c` accepts several overlays. On its own this lowered the failures to 2-20%: the module's translated code became ~46% of the audio thread's time.
+  - In the SDK (`runtime/spu/spu_helpers.h`), `rotqby`, `rotqbyi`, `shlqbyi` and `cwd` had no vector path on x86 (only on NEON) and became byte-by-byte loops. With SSE4.1 versions (`pshufb`), identical to the reference in an exhaustive test with gcc and clang, the module's hottest function went from 11037 to 8244 instructions.
+- **Result (PGO build, October 29, 2026):** in the same mission, 0.2% underruns in the first phase's combat and 0 in 3 minutes of the second; the final mission stays clean (8 of 26264). The autopilot did not reach this mission's boss.
+- **SDK:** the change is in `patches/ps3recomp/0001-spu-helpers-sse41-byte-rotates.patch`, applied on top of the revision pinned in `recompile.json` by `scripts/release/build_appimage.py` and, in local builds, by hand (`docs/BUILD.md`); CMake stops if it is missing.
 
-### 20. Aviso do motor de som com 176566 Hz — Em análise (provavelmente do próprio jogo)
-- **Sintoma:** `SCREAM: Error! Sound buffer size is too small for this playback frequency (176566 Hz)`, 4 vezes seguidas, na missão final, perto da fala `VOICE/SKL/SKL_050.msf` (Skull). É intermitente: apareceu em 2 de 3 sessões nessa missão; numa terceira, com 8 minutos e a mesma fala tocando duas vezes, não apareceu. Não apareceu em nenhuma outra fase testada.
-- **Origem (29/10/2026):** a função `func_000BE628` (`CheckBufferSizesWithPitch` da biblioteca SCREAM, TOC `0x6F3490`) recebe um pitch inteiro de 16 bits e calcula a frequência como `pitch × 11,71875` (48000/4096: pitch 4096 = 48 kHz). 176566 Hz corresponde a pitch ≈ 15067, ou seja, 3,68× a velocidade normal (~+22,5 semitons). O aviso sai quando o buffer da voz é menor que `frequência × 0,04267 × 2`; a função só avisa e não interrompe o som.
-- **O pitch vem de conta inteira:** quem chama (`func_000BBD28` e `func_000C0424`) passa a nota e os ajustes de pitch bend da voz por `func_000BA778` (combina nota, bend e modulação) e `func_000BAA08`/`func_000BA86C` (diferença entre nota pedida e nota base da amostra → tabela → multiplicação por `0x10F4A`). Tudo isso é aritmética inteira, em que a tradução dificilmente erra. Se houver erro do port, ele estaria antes, nos valores de bend ou modulação que o jogo passa para a voz.
-- **Sem referência do original:** os logs de TTY do RPCS3 nesta máquina estão vazios, e o save usado não veio de uma partida jogada aqui.
-- **Próximo passo, se valer a pena:** capturar a nota e os valores de bend quando o aviso disparar. `TTY_BT=playback` já marca o momento, mas no Linux a cadeia de chamadas não é impressa: `ppu_log_host_chain` em `loader_bridge.cpp` só funciona no Windows. O caminho mais simples é comparar com a mesma missão no RPCS3.
+### 20. Sound engine warning at 176566 Hz — Under analysis (probably the game's own)
+- **Symptom:** `SCREAM: Error! Sound buffer size is too small for this playback frequency (176566 Hz)`, 4 times in a row, in the final mission, near the line `VOICE/SKL/SKL_050.msf` (Skull). It is intermittent: it appeared in 2 of 3 sessions in that mission; in a third, of 8 minutes with the same line playing twice, it did not. It appeared in no other tested stage.
+- **Origin (October 29, 2026):** the function `func_000BE628` (the SCREAM library's `CheckBufferSizesWithPitch`, TOC `0x6F3490`) takes a 16-bit integer pitch and computes the frequency as `pitch × 11.71875` (48000/4096: pitch 4096 = 48 kHz). 176566 Hz corresponds to pitch ≈ 15067, that is, 3.68× normal speed (~+22.5 semitones). The warning appears when the voice's buffer is smaller than `frequency × 0.04267 × 2`; the function only warns and does not stop the sound.
+- **The pitch comes from integer maths:** the callers (`func_000BBD28` and `func_000C0424`) pass the voice's note and pitch bend adjustments through `func_000BA778` (combines note, bend and modulation) and `func_000BAA08`/`func_000BA86C` (difference between the requested note and the sample's base note → table → multiplication by `0x10F4A`). All of it is integer arithmetic, which translation rarely gets wrong. If there is a port error, it would be earlier, in the bend or modulation values the game passes to the voice.
+- **No reference from the original:** RPCS3's TTY logs on this machine are empty, and the save used did not come from a game played here.
+- **Next step, if worth it:** capture the note and the bend values when the warning fires. `TTY_BT=playback` already marks the moment, but on Linux the call chain is not printed: `ppu_log_host_chain` in `loader_bridge.cpp` only works on Windows. The simplest way is to compare with the same mission in RPCS3.
 
-### 13. Encerramento limpo — Em aberto
-Execuções com limite de tempo às vezes exigem SIGKILL (já anotado no `docs/BUILD.md`).
+### 13. Clean shutdown — Open
+Time-limited runs sometimes need SIGKILL (already noted in `docs/BUILD.md`).
 
-### 14. Processos de teste remanescentes — Contornado
-Um processo antigo do jogo sobreviveu ao `pkill -f` e rodou junto com o novo, contaminando duas medições. Os testes passaram a encerrar o jogo pelo PID e a confirmar que nenhum processo ficou rodando.
+### 14. Leftover test processes — Worked around
+An old game process survived `pkill -f` and ran alongside the new one, contaminating two measurements. The tests now end the game by PID and confirm no process is left running.
 
-### 15. Toques curtos do `PAD_FILE` perdidos — Contornado
-Com o jogo mais rápido, toques de 8 polls às vezes não eram registrados (o START da abertura, o ○ da escolha de dificuldade). Os scripts passaram a segurar os botões por mais tempo.
+### 15. Short `PAD_FILE` presses lost — Worked around
+With the faster game, presses of 8 polls were sometimes not registered (the opening's START, the ○ of the difficulty choice). The scripts now hold the buttons longer.
 
-### 16. Personagem não se move pelo direcional — Contornado
-Neste jogo o personagem só anda pelo analógico esquerdo, e o SDK só permite fixar o analógico desde o início (`PAD_STICK`). `PORT_PAD_STICK_FILE` (commit `1a8c94a`) permite controlar os dois analógicos por arquivo durante os testes.
+### 16. Character does not move with the d-pad — Worked around
+In this game the character only walks with the left stick, and the SDK only lets the stick be fixed from the start (`PAD_STICK`). `PORT_PAD_STICK_FILE` (commit `1a8c94a`) lets tests drive both sticks from a file.
 
-### 18. Sombras em posição errada durante o gameplay — Resolvido na primeira missão
-- **Sintoma (teste manual, 25/10/2026):** durante o gameplay, as sombras apareciam deslocadas, como silhuetas soltas na diagonal, longe dos pés dos personagens.
-- **Causa:** o jogo desenha o *shadow map* num buffer de profundidade de 1024×1024, mas o motor cria o buffer com o tamanho que cobre a tela inteira, 1280×1024 (`eng_zdepth_get`). A cópia usada como textura pegava o buffer todo, e o shader lê com coordenadas normalizadas: o mapa ficava esticado 1,25× na horizontal, e cada sombra saía deslocada, mais longe quanto mais à direita no mapa.
-- **Correção:** `eng_zdepth_snapshot` copia só o tamanho que a textura do jogo declara (1024×1024, a partir do canto superior esquerdo). `PORT_DEPTH_SNAPSHOT_FULL=1` volta ao comportamento anterior para comparação.
-- **Verificado:** quadros da luta na STG02 antes e depois (gravados com `scripts/bench_combat.py --dump`), comparados com a gravação do jogo original (YouTube `u4YixUZPH30`): com a correção, a sombra de cada personagem sai dos pés, curta e para trás, como no original; antes, aparecia solta na diagonal. A cena do holofote, que usa o mesmo mapa, continua igual ao original (sombra longa saindo dos pés para baixo e à direita). Outras missões não foram verificadas.
+### 18. Shadows in the wrong place during gameplay — Fixed in the first mission
+- **Symptom (manual test, October 25, 2026):** during gameplay, shadows appeared displaced, as loose diagonal silhouettes, away from the characters' feet.
+- **Cause:** the game draws the shadow map into a 1024×1024 depth buffer, but the engine creates the buffer at the size that covers the whole screen, 1280×1024 (`eng_zdepth_get`). The copy used as a texture took the whole buffer, and the shader reads it with normalized coordinates: the map was stretched 1.25× horizontally, and each shadow came out displaced, further the more to the right in the map.
+- **Fix:** `eng_zdepth_snapshot` copies only the size the game's texture declares (1024×1024, from the top-left corner). `PORT_DEPTH_SNAPSHOT_FULL=1` restores the earlier behaviour for comparison.
+- **Verified:** frames of the STG02 fight before and after (recorded with `scripts/perf/bench_combat.py --dump`), compared with the recording of the original game (YouTube `u4YixUZPH30`): with the fix, each character's shadow starts at their feet, short and behind, as in the original; before, it appeared loose on the diagonal. The spotlight scene, which uses the same map, still matches the original (a long shadow from the feet downwards and to the right). Other missions were not checked.
