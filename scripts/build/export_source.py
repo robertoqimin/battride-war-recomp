@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 import sys
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PRIVATE = {'game', 'firmware', 'gamedata', 'analysis', 'build', 'build-vulkan',
            'spu', 'src', '.git', '.venv'}
 EXTENSIONS = {'.c', '.cpp', '.h', '.hpp', '.md', '.txt', '.toml', '.json', '.sh', '.py', '.patch'}

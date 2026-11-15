@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 def run(args, **kwargs):
     subprocess.run([str(x) for x in args], check=True, **kwargs)
@@ -96,7 +96,7 @@ def main():
         # The audio task (and, with the firmware present, its MP3 codec):
         # rejected by the generic pipeline, translated below its data tail.
         dev_flash = Path(os.environ.get('PS3_DEV_FLASH') or ROOT / 'firmware/dev_flash')
-        audio = [sys.executable, ROOT / 'scripts/lift_audio_spu.py', '--sdk', sdk,
+        audio = [sys.executable, ROOT / 'scripts/build/lift_audio_spu.py', '--sdk', sdk,
                  '--elf', elf, '--spu', spu]
         if dev_flash.is_dir():
             audio += ['--dev-flash', dev_flash]

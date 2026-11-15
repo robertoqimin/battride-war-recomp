@@ -17,7 +17,7 @@
  *   -fdata-sections -Wl,--gc-sections -pthread -o /tmp/test_gcm_get_on_jump
  *   (clang on macOS: -Wl,-dead_strip)
  */
-#include "../gcm_bridge.c"
+#include "../port/graphics/gcm_bridge.c"
 #include <stdio.h>
 #include <stdlib.h>
 uint8_t* vm_base;

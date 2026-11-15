@@ -1,5 +1,5 @@
 # Build image for the portable AppImage. glibc 2.35 is the compatibility floor.
-#   podman build -t battride-build:ubuntu22.04 packaging/build-image
+#   podman build -t battride-build:ubuntu22.04 packaging/linux/build-image
 FROM docker.io/library/ubuntu:22.04
 # upgrade: every installed package must be the archive's current version, whose
 # source package is still published (collect_sources.py downloads it).

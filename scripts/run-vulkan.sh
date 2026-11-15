@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-port_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+port_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$port_root"
 export PS3_VFS_ROOT="$port_root/game"
 # Codecs extracted from this disc's PS3_UPDATE firmware, kept port-local.

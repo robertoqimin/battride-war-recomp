@@ -4,7 +4,7 @@
  *
  *   tests/test_input_bridge.sh
  */
-#include "../input_bridge.c"
+#include "../port/io/input_bridge.c"
 #include <assert.h>
 uint8_t* vm_base;
 uint32_t ppu_vm_size;

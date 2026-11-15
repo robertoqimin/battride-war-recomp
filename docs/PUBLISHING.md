@@ -8,8 +8,8 @@ From the project root:
 
 ```bash
 python3 -m unittest discover -s tests -p test_publication.py
-python3 scripts/export_source.py
-python3 scripts/export_source.py --output /tmp/kamenriderbattridewarsport-source.zip \
+python3 scripts/build/export_source.py
+python3 scripts/build/export_source.py --output /tmp/kamenriderbattridewarsport-source.zip \
   --manifest /tmp/kamenriderbattridewarsport-source-manifest.json
 ```
 

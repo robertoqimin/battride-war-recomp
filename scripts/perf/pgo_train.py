@@ -10,7 +10,7 @@ the translated game code: keep them private like the generated sources.
 
 usage: pgo_train.py --build <generate build dir> [--sessions 2]
 The game, firmware and save data are taken from the repository's game/,
-firmware/ and gamedata/ folders, as for run-vulkan.sh.
+firmware/ and gamedata/ folders, as for scripts/run-vulkan.sh.
 
 On Windows, run it from the MSYS2 UCRT64 shell with ffmpeg on PATH. A session
 ends with Ctrl+Break there, which the training build takes as SIGTERM.
@@ -27,7 +27,7 @@ import subprocess
 import tempfile
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 COMBAT_DRAWS = 550       # draws per frame once the first fight is on screen
 WINDOWS = os.name == 'nt'
 # The game in a process group of its own: Ctrl+Break reaches only that group.

@@ -58,7 +58,7 @@ area (box) filter is the standard way to resolve supersampling.
 ### Pieces
 
 - `shaders/downscale.comp`, compiled to SPIR-V by the same script as FSR
-  (`scripts/build_fsr1_shaders.py`) into a generated header.
+  (`scripts/build/build_fsr1_shaders.py`) into a generated header.
 - Pipeline, descriptor set and an output image at the output size, created
   and resized like `fsr_mid`/`fsr_out`.
 - The condition in the present path, and `vk_window_dump` reading the new
@@ -81,7 +81,7 @@ on a GTX 1650. Rendering at 4× remains the expensive part.
   averaging in linear light; the new pass should match it within rounding.
 - **Motion:** watch railings and character edges while moving; the shimmer
   should be gone at 4× → 1080p.
-- **Speed:** `scripts/bench_combat.py` at 4× → 1080p, before and after (three
+- **Speed:** `scripts/perf/bench_combat.py` at 4× → 1080p, before and after (three
   interleaved pairs); the difference should be within noise.
 - **Other cases:** 2× and 3× at 1080p, 4× at 1440p (ratio 2, where the new
   pass must equal the old result), a 4K window, borderless and fullscreen,

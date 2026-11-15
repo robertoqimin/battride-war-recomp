@@ -21,7 +21,7 @@ installer, testing on other machines, and a build of this branch on Linux (every
 `__MINGW32__`, and was checked by reading, not by building there).
 
 Performance in STG02 fighting, 60 s windows of the scripted route of
-`scripts/bench_combat.py`, alternating builds:
+`scripts/perf/bench_combat.py`, alternating builds:
 
 | Build | Average | p95 frame | Worst 5 seconds |
 |---|---|---|---|
@@ -48,7 +48,7 @@ Then follow `docs/BUILD.md` with these differences:
   `true`, and the SDK patches then do not apply): `git -c core.autocrlf=false
   clone ...`, and set it in the port's checkout too.
 - Decrypt the EBOOT with the official RPCS3 Windows build of the commit in
-  `packaging/rpcs3.json`, `rpcs3-v0.0.43-20370-0b0fa082_win64_msvc.7z`
+  `packaging/linux/rpcs3.json`, `rpcs3-v0.0.43-20370-0b0fa082_win64_msvc.7z`
   (SHA-256 `2fc3324b15fb979b6ec6b578b3c695b03e369888dffea34d91b5ae3e4f08cead`):
   `rpcs3.exe --allow-any-location --headless --decrypt game/PS3_GAME/USRDIR/EBOOT.BIN`,
   and `--installfw` with the disc's `PS3UPDAT.PUP` for the codecs. Extract the
@@ -79,17 +79,17 @@ itself: the game writes `nativePS/system/BLJS10220DATA.start` there before
 installing and `.installed` after, and a folder without `.installed` is removed
 before the game starts.
 
-**PGO and the benchmark:** `scripts/pgo_train.py` and `scripts/bench_combat.py`
+**PGO and the benchmark:** `scripts/perf/pgo_train.py` and `scripts/perf/bench_combat.py`
 run on Windows from the UCRT64 shell, with ffmpeg on `PATH` (no per-thread CPU,
 `--pin` or `--stacks` there: they read `/proc`):
 
 ```bash
 cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=generate
 cmake --build build-pgo -j 2
-python scripts/pgo_train.py --build build-pgo
+python scripts/perf/pgo_train.py --build build-pgo
 cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=use
 cmake --build build-pgo -j 3
-python scripts/bench_combat.py --binary build-pgo/kamenriderbattridewarsport.exe --runs 3
+python scripts/perf/bench_combat.py --binary build-pgo/kamenriderbattridewarsport.exe --runs 3
 ```
 
 A training session ends with Ctrl+Break to the game's process group, which the
@@ -98,8 +98,10 @@ compares `-fprofile-prefix-path` with the working directory as Windows spells
 it (`C:\...`), so CMake passes the build directory in that form there; with `/`
 the whole absolute path stayed in the `.gcda` names (`pgo/C~/Users/...`) and
 the profiles applied only in the directory that made them. Pass them to
-`scripts/build_windows_package.py --pgo` to ship them; the launcher's build
-then uses them.
+`scripts/release/build_windows_package.py --pgo` to ship them; the launcher's build
+then uses them. Profiles trained before the sources moved into `port/` carry
+the old object names; `scripts/perf/move_profiles.py <dir>` renames them (done
+for `build-pgo/pgo-win`: all six of the port's C++ files found their profile).
 
 ## What was changed, and why
 
@@ -139,7 +141,7 @@ MSYS2 UCRT64 on the reference laptop (no Wine cross-build was needed).
 ### 3. Playable: done, except
 
 - [x] Data installation (21,107 files identical to the disc), movies (played,
-  ended, skipped; 6,533,120 audio samples per channel as in `README_SAIL.md`),
+  ended, skipped; 6,533,120 audio samples per channel as in `docs/SAIL.md`),
   saves, keyboard and mouse, XInput controller, display modes, FSR, internal
   resolution.
 - [x] STG02 completed by hand.
@@ -167,13 +169,13 @@ MSYS2 UCRT64 on the reference laptop (no Wine cross-build was needed).
 ### 5. Launcher and importer: done
 
 The launcher keeps its GTK 4 / libadwaita interface (MSYS2's `gtk4`,
-`libadwaita` and `python-gobject`). `scripts/build_windows_package.py` assembles
+`libadwaita` and `python-gobject`). `scripts/release/build_windows_package.py` assembles
 the AppImage's layout for Windows, and the launcher, run from that package,
 imported the ISO and built the game end to end (42 minutes, 2 jobs); the built
 game then started with a plain Windows `PATH`. `tests/test_importer.py` passes
 there.
 
-- [x] RPCS3 for Windows (`packaging/rpcs3-windows.json`): downloaded and
+- [x] RPCS3 for Windows (`packaging/windows/rpcs3-windows.json`): downloaded and
   SHA-256 checked, unpacked with 7-Zip, run portable (its `dev_flash` beside
   `rpcs3.exe`).
 - [x] `7z.exe`, `ffmpeg.exe` and `ffprobe.exe` from the package; 7-Zip lists
@@ -225,7 +227,7 @@ there.
   decodes the game's movie to exactly the same pixels as Gyan's 9.0.2 build,
   and its sources come from the same place. Each package's licence files are
   kept (`share/licenses`), 7-Zip's in `usr/share/licenses/7zip`.
-- [x] `scripts/collect_windows_sources.py` gathers the corresponding source:
+- [x] `scripts/release/collect_windows_sources.py` gathers the corresponding source:
   the MSYS2 source package of each bundled version from repo.msys2.org, and
   7-Zip's from its author's GitHub releases. `--check` found all 166 (2.3 GB).
   `THIRD_PARTY_NOTICES.md` has a Windows section.

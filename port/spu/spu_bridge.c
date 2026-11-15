@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #if __has_include("battride_audio/audio_task.h")
-#include "battride_audio/audio_task.h"   /* scripts/lift_audio_spu.py */
+#include "battride_audio/audio_task.h"   /* scripts/build/lift_audio_spu.py */
 #endif
 /* The stripped executable segment includes words the static translator
  * rejects. Interpret live instructions rather than silently skipping them. */
@@ -16,7 +16,7 @@ extern void spu_begin_image(int image_id);
 #ifdef PORT_AUDIO_LIFTED
 /* The task's code below its data tail and the overlays it loads (the MP3
  * codec, the module embedded in the executable), translated by
- * scripts/lift_audio_spu.py: interpreted, the task filled about a third of
+ * scripts/build/lift_audio_spu.py: interpreted, the task filled about a third of
  * the cellAudio blocks in time. A translated function is run when the
  * interpreter reaches it, unless the script left it interpreted, and for an
  * overlay only while local store holds that overlay's instructions there

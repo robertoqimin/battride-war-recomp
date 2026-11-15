@@ -620,7 +620,7 @@ class Package:
         """GCC profiles shipped for this game and this toolchain, or None.
 
         They are execution counts recorded by running the translated code
-        (scripts/pgo_train.py), applied when compiling it on this computer."""
+        (scripts/perf/pgo_train.py), applied when compiling it on this computer."""
         path = self.root / 'usr/share/battride/pgo'
         try:
             info = json.loads((path / 'profile.json').read_text())
@@ -691,7 +691,7 @@ class Package:
             except OSError:
                 shutil.copy2(data / 'game/EBOOT.ELF', port / 'game/EBOOT.ELF')
             status('Step 1 of 2: translating the game code from your EBOOT. This takes a few minutes...')
-            code, _ = runner.run([python, port / 'scripts/generate.py', '--sdk', sdk, '--jobs', jobs],
+            code, _ = runner.run([python, port / 'scripts/build/generate.py', '--sdk', sdk, '--jobs', jobs],
                                  cwd=port, env=env, log=log, on_line=lambda _: None)
             if code:
                 raise ImportError('Translating the game code failed. See build.log.')
@@ -709,7 +709,7 @@ class Package:
                 cmake = self.root / 'usr/toolchain/sysroot/usr/bin/cmake'
                 configure = [cmake, '-S', port, '-B', build, '-G', 'Ninja',
                              '-DCMAKE_TOOLCHAIN_FILE=' + str(self.root / 'usr/toolchain/toolchain.cmake'),
-                             '-DPORT_PORTABLE=ON', '-Dglslang_DIR=' + str(port / 'packaging/glslang-compat')]
+                             '-DPORT_PORTABLE=ON', '-Dglslang_DIR=' + str(port / 'packaging/linux/glslang-compat')]
             code, _ = runner.run([*configure,
                                   '-DCMAKE_BUILD_TYPE=Debug', '-DCMAKE_C_FLAGS_DEBUG=-O2', '-DCMAKE_CXX_FLAGS_DEBUG=-O2',
                                   '-DPORT_ENABLE_SPU=ON', '-DPS3RECOMP_RSX_VULKAN=ON', '-DPORT_MARCH=native',

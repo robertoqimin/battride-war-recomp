@@ -63,26 +63,26 @@ a53b7bca5d47490710ba02af5f885e1219d10c7a1a456fcf6e13a48db668a014
 
 Check it with `sha256sum game/EBOOT.ELF`. Other executables, updates, or regions have not been validated: the integration call and SPU bridge addresses are specific to this version. This repository does not supply an ISO, EBOOT, keys, firmware, assets, or saves.
 
-Firmware codecs are optional for building but required for the audio paths used by the game. See [README_FIRMWARE.md](../README_FIRMWARE.md) for the placement of locally obtained files.
+Firmware codecs are optional for building but required for the audio paths used by the game. See [FIRMWARE.md](FIRMWARE.md) for the placement of locally obtained files.
 
 ## 3. Generate PPU/SPU sources
 
 From the port root, in a fresh checkout:
 
 ```bash
-../ps3recomp/.venv/bin/python scripts/generate.py --jobs 4
+../ps3recomp/.venv/bin/python scripts/build/generate.py --jobs 4
 ```
 
 The script checks the SDK commit and ELF hash, analyzes the executable, generates the 84 PPU files, inserts the graphics buffer integration call (located by the guest return address `0x0045BC64`, so no translated code is kept in the repository), and generates the accepted SPU programs. It refuses to replace existing `src/recomp/`, `spu/`, or `analysis/regeneration/` directories. Use `--verify-only` to check prerequisites only. For a different SDK location, add `--sdk /path/to/ps3recomp`.
 
 PPU generation produces about 593 MiB of sources; also allow space for object files and the executable. On machines with limited RAM, reduce `--jobs` and build parallelism.
 
-SPU generation deliberately uses `--allow-partial`: of the two detected images, only `615f0131…dc0657` is registered statically. The rejected audio image is then translated by `scripts/lift_audio_spu.py` below its data tail, with the SPU module it loads from the executable (and its MP3 codec from the firmware, when present), into `spu/battride_audio/`; `spu_bridge.c` runs that code and interprets the rest. The generated registry is checked before installing the results. All generated results are ignored by Git.
+SPU generation deliberately uses `--allow-partial`: of the two detected images, only `615f0131…dc0657` is registered statically. The rejected audio image is then translated by `scripts/build/lift_audio_spu.py` below its data tail, with the SPU module it loads from the executable (and its MP3 codec from the firmware, when present), into `spu/battride_audio/`; `spu_bridge.c` runs that code and interprets the rest. The generated registry is checked before installing the results. All generated results are ignored by Git.
 
 A checkout generated before that script existed can add the audio translation in place, then reconfigure:
 
 ```bash
-../ps3recomp/.venv/bin/python scripts/lift_audio_spu.py --sdk ../ps3recomp \
+../ps3recomp/.venv/bin/python scripts/build/lift_audio_spu.py --sdk ../ps3recomp \
   --elf game/EBOOT.ELF --spu spu --dev-flash firmware/dev_flash
 cmake --preset linux-vulkan -DPython3_EXECUTABLE="$PWD/../ps3recomp/.venv/bin/python"
 ```
@@ -97,10 +97,10 @@ ppu_lifter.py game/EBOOT.ELF --functions <analysis>/EBOOT.functions.json
   --hle-stubs <analysis>/EBOOT.imports.json --output <ppu-sources>
   --jobs 4 --chunk-lines 80000
 insert port_expand_graphics_buffers() before the call returning to 0x0045BC64
-  in ppu_recomp_015.cpp (scripts/generate.py)
+  in ppu_recomp_015.cpp (scripts/build/generate.py)
 build_spu_workloads.py --input game/EBOOT.ELF --lifted <spu-sources>
   --out <spu-sources>/spu_workloads.c --constructor --allow-partial
-scripts/lift_audio_spu.py --sdk <sdk> --elf game/EBOOT.ELF --spu <spu-sources>
+scripts/build/lift_audio_spu.py --sdk <sdk> --elf game/EBOOT.ELF --spu <spu-sources>
   [--dev-flash <dev_flash>]
 ```
 
@@ -112,18 +112,18 @@ Use the script to run the sequence: it manages temporary directories and checks.
 cmake --preset linux-vulkan \
   -DPython3_EXECUTABLE="$PWD/../ps3recomp/.venv/bin/python"
 cmake --build --preset linux-vulkan
-./run-vulkan.sh
+./scripts/run-vulkan.sh
 ```
 
 For a different SDK location, add `-DPS3RECOMP_DIR=/path/to/ps3recomp` during configuration. Check that CMake reports `guest programs available` for Vulkan: without glslang, game shaders do not work correctly. The SDK loads Vulkan dynamically.
 
-The game uses the `game/` tree as its VFS and creates installed data/saves in `gamedata/`. The launcher enables the window and shaders. The 2×32 MiB command-buffer expansion is no longer needed now that `sys_lwcond` blocks (see the README) and is off by default; `PORT_GCM_EXPAND_BUFFERS=1 ./run-vulkan.sh` re-enables it, and `PORT_LWCOND_SDK=1` restores the SDK's polling `sys_lwcond` for comparison. `PORT_GCM_FRAME_STATS=120` prints command volume, draws and buffer usage every 120 flips. `PORT_AUDIO_STATS=1` prints, every 5 s, how often a cellAudio block was still empty when its turn came; `PORT_SPU_PROFILE=<file>` writes where the audio SPU task spends interpreted time; `PORT_AUDIO_INTERPRET=1` runs that task fully interpreted. For scripted tests, `PORT_PAD_STICK_FILE=<file>` reads "<lx> <ly> [<rx> <ry>]" (0-255, 128 centred) from that file on every pad read and reports it as the analog sticks; this title moves the player only with the left stick. There is no automatic time limit; `PORT_TEST_SECONDS=300 ./run-vulkan.sh` limits a diagnostic run. Graceful shutdown has not been validated on every path; time-limited tests sometimes required SIGKILL.
+The game uses the `game/` tree as its VFS and creates installed data/saves in `gamedata/`. The launcher enables the window and shaders. The 2×32 MiB command-buffer expansion is no longer needed now that `sys_lwcond` blocks (see the README) and is off by default; `PORT_GCM_EXPAND_BUFFERS=1 ./scripts/run-vulkan.sh` re-enables it, and `PORT_LWCOND_SDK=1` restores the SDK's polling `sys_lwcond` for comparison. `PORT_GCM_FRAME_STATS=120` prints command volume, draws and buffer usage every 120 flips. `PORT_AUDIO_STATS=1` prints, every 5 s, how often a cellAudio block was still empty when its turn came; `PORT_SPU_PROFILE=<file>` writes where the audio SPU task spends interpreted time; `PORT_AUDIO_INTERPRET=1` runs that task fully interpreted. For scripted tests, `PORT_PAD_STICK_FILE=<file>` reads "<lx> <ly> [<rx> <ry>]" (0-255, 128 centred) from that file on every pad read and reports it as the analog sticks; this title moves the player only with the left stick. There is no automatic time limit; `PORT_TEST_SECONDS=300 ./scripts/run-vulkan.sh` limits a diagnostic run. Graceful shutdown has not been validated on every path; time-limited tests sometimes required SIGKILL.
 
 ## 5. Verify
 
 ```bash
 python3 -m unittest discover -s tests -p test_publication.py
-python3 scripts/export_source.py
+python3 scripts/build/export_source.py
 bash tests/test_graphics_buffers.sh
 bash tests/test_lwcond.sh
 bash tests/test_gcm_jump.sh

@@ -12,6 +12,6 @@ if [[ "${SANITIZE:-0}" == 1 ]]; then
     export ASAN_OPTIONS="detect_leaks=0${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
 fi
 "$port_compiler" -std=c++20 -O1 -g -pthread "${port_flags[@]}" \
-    -I "$port_root" "$port_root/tests/test_sail_audio.cpp" -lstdc++ \
+    -I "$port_root/port/audio" "$port_root/tests/test_sail_audio.cpp" -lstdc++ \
     "$port_root/build-vulkan/ps3recomp_sdk/libps3recomp_runtime.a" -o "$port_test_dir/test_sail_audio"
 "$port_test_dir/test_sail_audio" "$port_movie" "${2:-6533120}"

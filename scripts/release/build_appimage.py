@@ -27,9 +27,9 @@ ap.add_argument('--runtime',type=Path,required=True)
 ap.add_argument('--output',type=Path,required=True)
 ap.add_argument('--stage',type=Path,default=Path('build-appimage/portable/AppDir'))
 ap.add_argument('--sdk',type=Path,help='ps3recomp git checkout (default: ../ps3recomp)')
-ap.add_argument('--pgo',type=Path,help='GCC profiles trained with scripts/pgo_train.py on a build with this toolchain')
+ap.add_argument('--pgo',type=Path,help='GCC profiles trained with scripts/perf/pgo_train.py on a build with this toolchain')
 args=ap.parse_args()
-P=Path(__file__).resolve().parents[1];S=args.stage.resolve()
+P=Path(__file__).resolve().parents[2];S=args.stage.resolve()
 if S.exists() or args.output.exists():raise SystemExit('Choose new stage and output paths; existing files are preserved.')
 # Never package a newer build as if it had the documented compatibility floor.
 if subprocess.check_output(['getconf','GNU_LIBC_VERSION'],text=True).strip()!='glibc 2.35':
@@ -173,7 +173,7 @@ p=P/'game/PS3_DISC.SFB'
 if p.exists():manifest['PS3_DISC.SFB']={'size':p.stat().st_size,'sha256':sha(p)}
 (S/'app/disc-manifest.json').write_text(json.dumps(manifest,separators=(',',':')))
 meta={'version':'0.5.2','glibc_min':'2.35','cpu':'built on the player computer, -march=native','elf_sha256':spec['eboot_sha256'],
-      'sdk_commit':spec['sdk_commit'],'rpcs3':json.loads((P/'packaging/rpcs3.json').read_text()),'codecs':{p.name:sha(p) for p in (P/'firmware/dev_flash/sys/external').glob('*.pic')},
+      'sdk_commit':spec['sdk_commit'],'rpcs3':json.loads((P/'packaging/linux/rpcs3.json').read_text()),'codecs':{p.name:sha(p) for p in (P/'firmware/dev_flash/sys/external').glob('*.pic')},
       'game_libs':game_libs,'sevenzip_sha256':sha(S/'usr/bin/7z'),'runtime_sha256':sha(args.runtime),'pgo':args.pgo is not None}
 (S/'app/package.json').write_text(json.dumps(meta,indent=2));(S/'app/library-sources.json').write_text(json.dumps(bom,indent=2))
 # Exact Ubuntu package versions in the build image, for the corresponding sources.

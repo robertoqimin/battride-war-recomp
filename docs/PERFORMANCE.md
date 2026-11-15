@@ -8,8 +8,8 @@ Do not compare menus or video playback with combat.
 ## Frame intervals and CPU samples
 
 ```bash
-PORT_FRAME_TIMES=/tmp/combat.csv PORT_PROFILE=/tmp/combat.samples ./run-vulkan.sh
-python3 scripts/frame_report.py /tmp/combat.csv --start 180 --end 240
+PORT_FRAME_TIMES=/tmp/combat.csv PORT_PROFILE=/tmp/combat.samples ./scripts/run-vulkan.sh
+python3 scripts/perf/frame_report.py /tmp/combat.csv --start 180 --end 240
 ```
 
 The CSV records monotonic **guest frame completion intervals**, after the frame
@@ -128,7 +128,7 @@ of every combat scene. Percentages are self samples, not inclusive call costs.
   and diagnostic accesses also delegate. Dynamic barrier watches and null-sweep
   diagnostics are checked on every fast-path candidate.
 
-Use `PORT_PPU_MEMORY_SLOW=1 ./run-vulkan.sh` to disable the new inline **stores**
+Use `PORT_PPU_MEMORY_SLOW=1 ./scripts/run-vulkan.sh` to disable the new inline **stores**
 at startup. To restore both the original read and write compilation paths,
 configure `-DPORT_PPU_FAST_MEMORY=OFF` and rebuild. The cache variable
 `PORT_PPU_FAST_MEMORY_CHUNKS` controls the selected generated chunks. Windows
@@ -195,7 +195,7 @@ older CPUs; choose `PORT_MARCH` for the intended target when distributing binari
 
 ## Combat benchmark and the frame's critical path (2026-10-25)
 
-`scripts/bench_combat.py --binary <game> --runs 3` plays the scripted route into STG02 and measures 60 s of fighting: average fps, p95/p99, frames over 16.7/33 ms, 1% low, worst 5 s, per-thread CPU (guest thread names from the log) and the draw-count range of the window. Run-to-run spread of the average is about ±3 fps, so compare builds with interleaved A/B runs (A, B, A, B, ...). Two traps it now avoids: the tutorial prompt pauses the first fight (identical draw counts in every `[fstat]` line), and the scripted menus sometimes stall (the run is retried). `pgo_train.py` has the same fixes and SIGKILLs a stalled attempt so it writes no profile.
+`scripts/perf/bench_combat.py --binary <game> --runs 3` plays the scripted route into STG02 and measures 60 s of fighting: average fps, p95/p99, frames over 16.7/33 ms, 1% low, worst 5 s, per-thread CPU (guest thread names from the log) and the draw-count range of the window. Run-to-run spread of the average is about ±3 fps, so compare builds with interleaved A/B runs (A, B, A, B, ...). Two traps it now avoids: the tutorial prompt pauses the first fight (identical draw counts in every `[fstat]` line), and the scripted menus sometimes stall (the run is retried). `pgo_train.py` has the same fixes and SIGKILLs a stalled attempt so it writes no profile.
 
 The game runs on wall-clock time (opening logos 20.2 s at 60 fps, 20.9 s with `PORT_FPS_LIMIT=20`) and caps itself at 60 fps. A `PS3_FTRACE` timeline shows each frame as the FIFO walker (`frame_clock`) processing the frame's commands (~12.5 ms), then the guest main thread working ~5.6 ms after the frame's fence. In frames over 20 ms the walker stays at ~13 ms and the main thread grows to ~10.5 ms, mostly building the command list (`func_005B2930`, chunk 020). `PORT_ENG_PROFILE=1` times `sink_end`'s parts per frame.
 

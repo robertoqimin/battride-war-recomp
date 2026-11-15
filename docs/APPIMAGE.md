@@ -15,7 +15,7 @@ If FUSE is unavailable, run `./BattrideWarRecomp-v0.5.2-x86_64.AppImage --appima
 
 Select the Japan BLJS10220 ISO and click **Import ISO & Play**. The first launch:
 
-1. checks the disc listing, then downloads the official RPCS3 build pinned in `packaging/rpcs3.json` (83 MB, from the RPCS3 project's GitHub release; SHA-256 verified). If `~/Downloads` already holds that exact file, or you pass `--rpcs3 /path/to/rpcs3-v0.0.43-20370-0b0fa082_linux64.AppImage`, no download happens. It then extracts and verifies the game files (size and SHA-256), decrypts the EBOOT with RPCS3 and extracts the audio codecs from the firmware update on the disc, and deletes RPCS3 again (`import.log`);
+1. checks the disc listing, then downloads the official RPCS3 build pinned in `packaging/linux/rpcs3.json` (83 MB, from the RPCS3 project's GitHub release; SHA-256 verified). If `~/Downloads` already holds that exact file, or you pass `--rpcs3 /path/to/rpcs3-v0.0.43-20370-0b0fa082_linux64.AppImage`, no download happens. It then extracts and verifies the game files (size and SHA-256), decrypts the EBOOT with RPCS3 and extracts the audio codecs from the firmware update on the disc, and deletes RPCS3 again (`import.log`);
 2. translates the EBOOT into PPU/SPU sources with the SDK tools (`build.log`);
 3. compiles the game with `-march=native` for this CPU, one job per 2 GB of available memory (`build.log`). This took 13 minutes with 4 jobs on a Ryzen 5 4600H; expect 15-60 minutes;
 4. checks that a Vulkan GPU can create a window surface, a swapchain and BC textures (`graphics.log`), then starts the game (`game.log`).
@@ -38,36 +38,36 @@ Headless checks:
 Everything is built inside the Ubuntu 22.04 image; `build_appimage.py` refuses any other glibc. Inputs: the original extracted disc under `game/` and the firmware codecs under `firmware/` (only their names, sizes and SHA-256 are recorded, to verify the player's disc), a git checkout of ps3recomp next to this one, the official standalone 7-Zip Linux distribution (`7zz` and `License.txt`) and the official AppImage type2-runtime x86_64 binary. No files are downloaded automatically. Obtain the runtime from https://github.com/AppImage/type2-runtime and verify its published SHA-256.
 
 ```sh
-podman build -t battride-build:ubuntu22.04 packaging/build-image
+podman build -t battride-build:ubuntu22.04 packaging/linux/build-image
 G=$(cd .. && pwd)   # parent holding this checkout and ../ps3recomp
 podman run --rm --userns=keep-id --security-opt label=disable \
   -v "$G:$G" -v /path/inputs:/path/inputs:ro -w "$PWD" battride-build:ubuntu22.04 \
-  python3 scripts/build_appimage.py \
+  python3 scripts/release/build_appimage.py \
     --runtime /path/inputs/runtime-x86_64 \
     --sevenzip-dir /path/inputs/7zip-linux --stage build-appimage/v0.5.2/AppDir \
     --pgo build-pgo11/pgo --output dist/BattrideWarRecomp-v0.5.2-x86_64.AppImage
 # Corresponding source for the release page (runs as container root; needs network):
 podman run --rm --security-opt label=disable -v "$G:$G" -w "$PWD" battride-build:ubuntu22.04 \
-  python3 scripts/collect_sources.py --stage build-appimage/v0.5.2/AppDir \
+  python3 scripts/release/collect_sources.py --stage build-appimage/v0.5.2/AppDir \
     --out dist/BattrideWarRecomp-v0.5.2-sources.tar --runtime-commit <type2-runtime commit>
 ```
 
-`--pgo` takes GCC profiles trained with the AppImage's own compiler (see "Optimization profiles"); without it the AppImage builds the game without them.
+`--pgo` takes GCC profiles trained with the AppImage's own compiler (see "Optimization profiles"); without it the AppImage builds the game without them. Profiles trained before the sources moved into `port/` (November 2026) carry the old object names: `python3 scripts/perf/move_profiles.py build-pgo11/pgo` renames them once.
 
 Publish the sources tar with every AppImage, from the same build: `collect_sources.py` maps each file listed in `app/system-files.txt` to its Ubuntu package, downloads the source packages of exactly the installed versions, and adds 7-Zip and the AppImage runtime with the libfuse and squashfuse sources it links.
 
 What goes in:
 
 - `usr/share/battride/port/`: the files listed in `PUBLIC_FILES.txt`, nothing else.
-- `usr/share/battride/ps3recomp/`: `git archive` of the commit pinned in `recompile.json` (local changes never ship) and a `.ps3recomp-commit` stamp, which `scripts/generate.py` accepts in place of a git checkout.
-- `usr/toolchain/`: assembled by `scripts/appimage_toolchain.py` from the build image's packages: GCC 11, Clang 14, binutils, CMake 3.22, Ninja, patch, the glibc 2.35 and Linux headers, SDL2, Vulkan headers and the static glslang/SPIRV-Tools libraries. The compilers run with `--sysroot`, so the game links against glibc 2.35 whatever the host has; `toolchain.cmake` points CMake at the sysroot, and the package CMake files that hardcode `/usr` are rewritten to follow `CMAKE_SYSROOT`. Tool processes take only glibc and the C++ runtime from the host (`runtime/` holds their other libraries, LLVM 14 included under its own soname).
-- `packaging/glslang-compat`: Ubuntu 22.04's glslang installs neither `glslangConfig.cmake` nor `Public/ResourceLimits.h`; the shim supplies both on top of the packaged static libraries, so the SDK stays unmodified. The local build must report `Vulkan: guest programs available (glslang 11.8.0)`, or the launcher stops.
+- `usr/share/battride/ps3recomp/`: `git archive` of the commit pinned in `recompile.json` (local changes never ship) and a `.ps3recomp-commit` stamp, which `scripts/build/generate.py` accepts in place of a git checkout.
+- `usr/toolchain/`: assembled by `scripts/release/appimage_toolchain.py` from the build image's packages: GCC 11, Clang 14, binutils, CMake 3.22, Ninja, patch, the glibc 2.35 and Linux headers, SDL2, Vulkan headers and the static glslang/SPIRV-Tools libraries. The compilers run with `--sysroot`, so the game links against glibc 2.35 whatever the host has; `toolchain.cmake` points CMake at the sysroot, and the package CMake files that hardcode `/usr` are rewritten to follow `CMAKE_SYSROOT`. Tool processes take only glibc and the C++ runtime from the host (`runtime/` holds their other libraries, LLVM 14 included under its own soname).
+- `packaging/linux/glslang-compat`: Ubuntu 22.04's glslang installs neither `glslangConfig.cmake` nor `Public/ResourceLimits.h`; the shim supplies both on top of the packaged static libraries, so the SDK stays unmodified. The local build must report `Vulkan: guest programs available (glslang 11.8.0)`, or the launcher stops.
 
 ### Optimization profiles
 
 `usr/share/battride/pgo/` holds GCC profile-guided optimization data: for each compiled function of the translated code, how often each branch was taken while the opening mission was played. The player's build passes `-DPORT_PGO=use`, and GCC lays out and inlines the hot paths accordingly. The files contain counters and checksums of the functions' control flow, no code, text, graphics or sound. `profile.json` records the GCC version, SDK commit and EBOOT they match; the importer uses them only when the SDK and EBOOT match, and `build_appimage.py` refuses profiles made with a different GCC than the bundled one. Objects are named relative to the build directory (`-fprofile-prefix-path`), so the profiles apply in the importer's fresh build directory; the two SDK sources compiled into the game keep the SDK's absolute path in their profile names, and the importer renames those for its own SDK copy.
 
-To produce them, build with the AppImage's toolchain and the importer's options plus `-DPORT_PGO=generate -DPORT_PGO_DIR=build-pgo11/pgo` (configure from the stage's `usr/toolchain/toolchain.cmake`, with its `sysroot/usr/bin` first in `PATH`), then run `python3 scripts/pgo_train.py --build <that build directory>`: two sessions boot the game, pass the menus and the tutorial with scripted input and fight for a minute each, ending with SIGTERM so the training build writes its profiles. The profiles only fit the C++ sources they were trained on; retrain after changing any C++ file of the port, the generated code layout, or the SDK.
+To produce them, build with the AppImage's toolchain and the importer's options plus `-DPORT_PGO=generate -DPORT_PGO_DIR=build-pgo11/pgo` (configure from the stage's `usr/toolchain/toolchain.cmake`, with its `sysroot/usr/bin` first in `PATH`), then run `python3 scripts/perf/pgo_train.py --build <that build directory>`: two sessions boot the game, pass the menus and the tutorial with scripted input and fight for a minute each, ending with SIGTERM so the training build writes its profiles. The profiles only fit the C++ sources they were trained on; retrain after changing any C++ file of the port, the generated code layout, or the SDK.
 
 Measured on a Ryzen 5 4600H with the bundled GCC 11, four alternating 60-second STG02 combat runs each: 47.9 against 46.4 fps on average, p95 frame time 24.5 against 28.5 ms, frames over 33 ms 3 against 17, worst five seconds 42.9 against 35.4 fps. The same profiles compiled for `znver3`, `skylake` and `x86-64-v2` targets without a single function losing its profile.
 
@@ -97,7 +97,7 @@ On CachyOS with an RX 6750 XT (RADV, Wayland) the game ran without a window: `ga
 
 ## No translated code in the sources in 0.4.1
 
-The integration call for the graphics command arenas used to be applied to the generated PPU code as a patch, which carried a few context lines of translated code. `scripts/generate.py` now inserts it by the guest return address alone; the generated file is identical, so the compiled game and the optimization profiles are unchanged.
+The integration call for the graphics command arenas used to be applied to the generated PPU code as a patch, which carried a few context lines of translated code. `scripts/build/generate.py` now inserts it by the guest return address alone; the generated file is identical, so the compiled game and the optimization profiles are unchanged.
 
 ## Performance in 0.4.0
 

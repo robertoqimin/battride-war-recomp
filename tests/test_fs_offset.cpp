@@ -1,6 +1,6 @@
 // Regression: exact bytes, unchanged cursor, EOF and output initialization.
 #define PORT_PPU_FS_SOURCE "../ps3recomp/runtime/ppu/ppu_fs.cpp"
-#include "../fs_bridge.cpp"
+#include "../port/io/fs_bridge.cpp"
 #include <cassert>
 #include <cstdlib>
 extern "C" {

@@ -14,8 +14,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"   /* AMD's header, unmodified */
 #pragma GCC diagnostic ignored "-Wunused-function"
-#include "third_party/fsr1/ffx_a.h"
-#include "third_party/fsr1/ffx_fsr1.h"
+#include "../../third_party/fsr1/ffx_a.h"
+#include "../../third_party/fsr1/ffx_fsr1.h"
 #pragma GCC diagnostic pop
 
 const uint32_t* port_fsr1_easu_code(size_t* bytes) { *bytes = sizeof fsr1_easu_spv; return fsr1_easu_spv; }

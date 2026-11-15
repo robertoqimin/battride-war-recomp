@@ -36,13 +36,16 @@ if(NOT DEFINED PS3RECOMP_DIR)
 endif()
 get_filename_component(PS3RECOMP_DIR "${PS3RECOMP_DIR}" ABSOLUTE)
 
+# The port's own sources, by area (core, graphics, audio, spu, io).
+set(PORT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/port")
+
 set(RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp" CACHE PATH
     "Directory holding the lifter's output: ppu_recomp.h and the lifted sources")
 get_filename_component(RECOMP_DIR "${RECOMP_DIR}" ABSOLUTE)
 
 message(STATUS "ps3recomp SDK:   ${PS3RECOMP_DIR}")
 # The port's fixes to the pinned SDK (patches/ps3recomp/, applied by
-# docs/BUILD.md and scripts/build_appimage.py). Without them the build would
+# docs/BUILD.md and scripts/release/build_appimage.py). Without them the build would
 # work but the chapter 4 stage's audio breaks up, so refuse to build.
 file(STRINGS "${PS3RECOMP_DIR}/runtime/spu/spu_helpers.h" _port_sdk_patched LIMIT_COUNT 1 REGEX "spu__x_perm")
 if(NOT _port_sdk_patched)
@@ -116,16 +119,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32)
     get_target_property(PORT_RUNTIME_SOURCES ps3recomp_runtime SOURCES)
     list(FILTER PORT_RUNTIME_SOURCES EXCLUDE REGEX "libs/audio/cellAudio\\.c$")
     set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_RUNTIME_SOURCES}")
-    target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/audio_bridge.c")
-    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/audio_bridge.c" TARGET_DIRECTORY ps3recomp_runtime PROPERTIES COMPILE_DEFINITIONS "PORT_AUDIO_SOURCE=\"${PS3RECOMP_DIR}/libs/audio/cellAudio.c\"")
+    target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/audio/audio_bridge.c")
+    set_source_files_properties("${PORT_SRC}/audio/audio_bridge.c" TARGET_DIRECTORY ps3recomp_runtime PROPERTIES COMPILE_DEFINITIONS "PORT_AUDIO_SOURCE=\"${PS3RECOMP_DIR}/libs/audio/cellAudio.c\"")
 endif()
 
 # Keyboard and mouse as pad port 0, around the SDK's controller poll.
 get_target_property(PORT_PAD_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_PAD_SOURCES EXCLUDE REGEX "libs/input/cellPad\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_PAD_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/input_bridge.c")
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/input_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/io/input_bridge.c")
+set_source_files_properties("${PORT_SRC}/io/input_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
     PROPERTIES COMPILE_DEFINITIONS "PORT_CELLPAD_SOURCE=\"${PS3RECOMP_DIR}/libs/input/cellPad.c\"")
 
 # Guest lwmutex locks wait on Win32-style semaphores; skip the clock reads a
@@ -134,8 +137,8 @@ if(NOT WIN32)
     get_target_property(PORT_SYNC_SOURCES ps3recomp_runtime SOURCES)
     list(FILTER PORT_SYNC_SOURCES EXCLUDE REGEX "runtime/platform/win32_compat\\.c$")
     set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_SYNC_SOURCES}")
-    target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sync_bridge.c")
-    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/sync_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
+    target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/core/sync_bridge.c")
+    set_source_files_properties("${PORT_SRC}/core/sync_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
         PROPERTIES COMPILE_DEFINITIONS "PORT_WIN32_COMPAT_SOURCE=\"${PS3RECOMP_DIR}/runtime/platform/win32_compat.c\"")
 endif()
 
@@ -143,45 +146,45 @@ endif()
 get_target_property(PORT_GCM_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_GCM_SOURCES EXCLUDE REGEX "libs/video/cellGcmSys\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_GCM_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/gcm_bridge.c")
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/graphics/gcm_bridge.c")
 
 # Port-local Vulkan vertex texture descriptors and samplers.
 get_target_property(PORT_VK_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_VK_SOURCES EXCLUDE REGEX "libs/video/rsx_vulkan_backend\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_VK_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/vulkan_bridge.c"
-                                         "${CMAKE_CURRENT_SOURCE_DIR}/fsr1_bridge.c"
-                                         "${CMAKE_CURRENT_SOURCE_DIR}/thread_affinity.c")
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/graphics/vulkan_bridge.c"
+                                         "${PORT_SRC}/graphics/fsr1_bridge.c"
+                                         "${PORT_SRC}/core/thread_affinity.c")
 
 # Port-local render diagnostics; capture only when explicitly triggered.
 get_target_property(PORT_RENDER_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_RENDER_SOURCES EXCLUDE REGEX "libs/video/rsx_draw_engine\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_RENDER_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/rsx_engine_bridge.c")
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/graphics/rsx_engine_bridge.c")
 
 # The audio task is interpreted, including runtime-loaded firmware code: a
 # port-local interpreter with a decode cache (spu_interp_bridge.c).
 get_target_property(PORT_SPU_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_SPU_SOURCES EXCLUDE REGEX "runtime/spu/spu_interp\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_SPU_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spu_interp_bridge.c")
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/spu_interp_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/spu/spu_interp_bridge.c")
+set_source_files_properties("${PORT_SRC}/spu/spu_interp_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
     PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
 
 # Measured FIFO hotspot: four-component vertex decoding, with exact SIMD paths.
 get_target_property(PORT_VERTEX_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_VERTEX_SOURCES EXCLUDE REGEX "libs/video/rsx_vertex_compact\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_VERTEX_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/rsx_vertex_bridge.c")
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/rsx_vertex_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/graphics/rsx_vertex_bridge.c")
+set_source_files_properties("${PORT_SRC}/graphics/rsx_vertex_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
     PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/video")
 
 # The SDK's SPU reservation tracking, with its bitmap readable in place.
 get_target_property(PORT_SPU_COH_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_SPU_COH_SOURCES EXCLUDE REGEX "runtime/spu/spu_coherency\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_SPU_COH_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spu_coherency_bridge.c")
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/spu_coherency_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/spu/spu_coherency_bridge.c")
+set_source_files_properties("${PORT_SRC}/spu/spu_coherency_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
     PROPERTIES COMPILE_DEFINITIONS "PORT_SPU_COHERENCY_SOURCE=\"${PS3RECOMP_DIR}/runtime/spu/spu_coherency.c\""
                INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
 
@@ -189,8 +192,8 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/spu_coherency_bridge.c"
 get_target_property(PORT_SPU_CH_SOURCES ps3recomp_runtime SOURCES)
 list(FILTER PORT_SPU_CH_SOURCES EXCLUDE REGEX "runtime/spu/spu_channels\\.c$")
 set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_SPU_CH_SOURCES}")
-target_sources(ps3recomp_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spu_channels_bridge.c")
-set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/spu_channels_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
+target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/spu/spu_channels_bridge.c")
+set_source_files_properties("${PORT_SRC}/spu/spu_channels_bridge.c" TARGET_DIRECTORY ps3recomp_runtime
     PROPERTIES COMPILE_DEFINITIONS "PORT_SPU_CHANNELS_SOURCE=\"${PS3RECOMP_DIR}/runtime/spu/spu_channels.c\""
                INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu")
 
@@ -198,8 +201,8 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/spu_channels_bridge.c" 
 # SPU helpers take their vector paths (spu_shufb is a byte loop without it).
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     set_source_files_properties(
-        "${CMAKE_CURRENT_SOURCE_DIR}/spu_interp_bridge.c"
-        "${CMAKE_CURRENT_SOURCE_DIR}/spu_channels_bridge.c"
+        "${PORT_SRC}/spu/spu_interp_bridge.c"
+        "${PORT_SRC}/spu/spu_channels_bridge.c"
         TARGET_DIRECTORY ps3recomp_runtime
         PROPERTIES COMPILE_OPTIONS "-O2;-msse4.1")
 endif()
@@ -244,9 +247,9 @@ endif()
 # library: every one of these files #includes the lifter's per-game
 # ppu_recomp.h, so they can only be built against a particular lift.
 set(PS3RECOMP_SCAFFOLD
-    "${CMAKE_CURRENT_SOURCE_DIR}/loader_bridge.cpp"
+    "${PORT_SRC}/core/loader_bridge.cpp"
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_hle.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fs_bridge.cpp"
+    "${PORT_SRC}/io/fs_bridge.cpp"
     "${PS3RECOMP_DIR}/runtime/ppu/ppu_sysprx.cpp"
 )
 
@@ -290,7 +293,7 @@ elseif(PORT_ENABLE_SPU)
         # has been run, so each is included only if it is actually here.
         # The audio task's code below its data tail, the module it loads and,
         # when the firmware was available, its MP3 codec
-        # (scripts/lift_audio_spu.py); spu_bridge.c
+        # (scripts/build/lift_audio_spu.py); spu_bridge.c
         # falls back to pure interpretation without them.
         if(EXISTS "${SPU_DIR}/battride_audio/task/spu_recomp.c")
             list(APPEND SPU_SOURCES "${SPU_DIR}/battride_audio/task/spu_recomp.c")
@@ -314,15 +317,15 @@ elseif(PORT_ENABLE_SPU)
             endif()
         endforeach()
     else()
-        message(FATAL_ERROR "SPU sources missing in ${SPU_DIR}. Run scripts/generate.py first, or explicitly use PORT_ENABLE_SPU=OFF for PPU-only diagnostics.")
+        message(FATAL_ERROR "SPU sources missing in ${SPU_DIR}. Run scripts/build/generate.py first, or explicitly use PORT_ENABLE_SPU=OFF for PPU-only diagnostics.")
     endif()
 endif()
 
 add_executable(${PROJECT_NAME}
-    main.cpp
-    stubs.cpp
-    sail_bridge.cpp
-    spu_bridge.c
+    "${PORT_SRC}/core/main.cpp"
+    "${PORT_SRC}/core/stubs.cpp"
+    "${PORT_SRC}/audio/sail_bridge.cpp"
+    "${PORT_SRC}/spu/spu_bridge.c"
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}
@@ -493,9 +496,9 @@ endif()
 # ---------------------------------------------------------------------------
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
 
-set_source_files_properties(spu_bridge.c PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu;${SPU_DIR}")
+set_source_files_properties("${PORT_SRC}/spu/spu_bridge.c" PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu;${SPU_DIR}")
 
-set_source_files_properties(fs_bridge.cpp PROPERTIES COMPILE_DEFINITIONS "PORT_PPU_FS_SOURCE=\"${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp\"")
+set_source_files_properties("${PORT_SRC}/io/fs_bridge.cpp" PROPERTIES COMPILE_DEFINITIONS "PORT_PPU_FS_SOURCE=\"${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp\"")
 
 # The combat CPU profile identifies func_004B5120 (tree traversal) in chunk
 # 029 as a hot PPU path. Optimize that translation unit more aggressively,
@@ -538,7 +541,7 @@ if(PORT_PPU_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 
     if(native_defined)
         set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS
             "-include" "${CMAKE_CURRENT_SOURCE_DIR}/include/port_ppu_native.h")
-        target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/ppu_native.cpp")
+        target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/ppu_native.cpp")
         message(STATUS "Native PPU:      func_004B5120 (chunk ${PORT_PPU_NATIVE_CHUNK})")
     else()
         message(STATUS "Native PPU:      off (func_004B5120 not in chunk ${PORT_PPU_NATIVE_CHUNK})")
@@ -548,7 +551,44 @@ endif()
 # linker sends the chunks' vm_write8/16/32/64 calls to store_wrap.c.
 option(PORT_PPU_WRAP_STORES "Route translated stores through the fast path in store_wrap.c" ON)
 if(PORT_PPU_WRAP_STORES AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW) AND NOT APPLE)
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/store_wrap.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/store_wrap.c")
     target_link_options(${PROJECT_NAME} PRIVATE
         "-Wl,--wrap=vm_write8,--wrap=vm_write16,--wrap=vm_write32,--wrap=vm_write64")
+endif()
+
+# ---------------------------------------------------------------------------
+# Tests: ctest --test-dir <build dir> (-L to pick a label)
+# ---------------------------------------------------------------------------
+# Each shell test compiles the port files it covers on its own, against the SDK
+# in PS3RECOMP_DIR; "game" tests also need the Linux build-vulkan runtime and
+# the imported game. The Python tests cover the launcher, importer and scripts.
+option(PORT_TESTS "Register the port's tests with CTest" ON)
+if(PORT_TESTS)
+    enable_testing()
+    find_package(Python3 COMPONENTS Interpreter)
+    find_program(PORT_BASH bash)
+    if(Python3_Interpreter_FOUND)
+        foreach(t importer publication frame_report)
+            add_test(NAME ${t} COMMAND "${Python3_EXECUTABLE}" -m unittest "tests/test_${t}.py"
+                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+            set_tests_properties(${t} PROPERTIES LABELS "python")
+        endforeach()
+    endif()
+    # Most shell tests use Linux APIs (sys/mman.h, ELF weak symbols, the SDL
+    # controller path); on Windows only these two build.
+    set(PORT_SHELL_TESTS gcm_jump graphics_buffers input_bridge lwcond ppu_memory vertex_decode vertex_remap
+                         vmx_simd sail sail_audio)
+    if(WIN32)
+        set(PORT_SHELL_TESTS ppu_memory vmx_simd)
+    endif()
+    if(PORT_BASH)
+        foreach(t IN LISTS PORT_SHELL_TESTS)
+            set(label unit)
+            if(t MATCHES "^sail")
+                set(label game)
+            endif()
+            add_test(NAME ${t} COMMAND "${PORT_BASH}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${t}.sh")
+            set_tests_properties(${t} PROPERTIES ENVIRONMENT "PS3RECOMP_DIR=${PS3RECOMP_DIR}" LABELS ${label})
+        endforeach()
+    endif()
 endif()

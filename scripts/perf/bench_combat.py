@@ -33,7 +33,7 @@ import subprocess
 import tempfile
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 COMBAT_DRAWS = 550
 WINDOWS = os.name == 'nt'
 CLK_TCK = 100 if WINDOWS else os.sysconf('SC_CLK_TCK')

@@ -74,12 +74,12 @@ the original extracted disc under `game/` and the firmware codecs under
 `firmware/` (only their names, sizes and SHA-256 are recorded):
 
 ```bash
-python scripts/build_windows_package.py --stage ../BattrideWarRecomp \
+python scripts/release/build_windows_package.py --stage ../BattrideWarRecomp \
     --sevenzip-dir "C:/Program Files/7-Zip" --bundle --pgo build-pgo/pgo-win
-python scripts/collect_windows_sources.py --package ../BattrideWarRecomp --out ../BattrideWarRecomp-sources.tar
+python scripts/release/collect_windows_sources.py --package ../BattrideWarRecomp --out ../BattrideWarRecomp-sources.tar
 "/c/Program Files/7-Zip/7z.exe" a -tzip -mx=5 BattrideWarRecomp-windows.zip ../BattrideWarRecomp
 ```
 
-`--pgo` takes profiles from `scripts/pgo_train.py` (see `docs/WINDOWS.md`);
+`--pgo` takes profiles from `scripts/perf/pgo_train.py` (see `docs/WINDOWS.md`);
 without it the player's build runs about 25% slower. `--check` instead of
 `--out` asks the servers that every source exists without downloading it.

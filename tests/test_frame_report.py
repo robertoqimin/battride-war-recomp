@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location('frame_report', Path(__file__).resolve().parents[1] / 'scripts/frame_report.py')
+spec = importlib.util.spec_from_file_location('frame_report', Path(__file__).resolve().parents[1] / 'scripts/perf/frame_report.py')
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
 

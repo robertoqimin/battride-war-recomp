@@ -16,7 +16,7 @@ Without it, usr/toolchain/toolchain.json points at the local installation and at
 
 usage: build_windows_package.py --stage <new dir> --sevenzip-dir <dir with 7z.exe and 7z.dll>
        (--bundle | --python <python> --ffmpeg-dir <dir with ffmpeg.exe and ffprobe.exe>)
-       [--pgo <profiles from scripts/pgo_train.py>] [--toolchain C:/msys64/ucrt64] [--sdk ../ps3recomp]
+       [--pgo <profiles from scripts/perf/pgo_train.py>] [--toolchain C:/msys64/ucrt64] [--sdk ../ps3recomp]
 
 With --pgo the package carries GCC profiles that the player's build applies
 (PORT_PGO=use). They fit only the GCC, SDK and EBOOT they were trained with.
@@ -32,14 +32,14 @@ import shutil
 import subprocess
 import tarfile
 
-P = Path(__file__).resolve().parents[1]
+P = Path(__file__).resolve().parents[2]
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument('--stage', type=Path, required=True)
 ap.add_argument('--sevenzip-dir', type=Path, required=True)
 ap.add_argument('--ffmpeg-dir', type=Path, help="FFmpeg for the movies (without --bundle, which takes MSYS2's)")
 ap.add_argument('--python', type=Path, help='Python with the SDK tools\' requirements (without --bundle)')
 ap.add_argument('--bundle', action='store_true', help='copy the MSYS2 toolchain, GTK and Python into the package')
-ap.add_argument('--pgo', type=Path, help='GCC profiles and profile.json from scripts/pgo_train.py')
+ap.add_argument('--pgo', type=Path, help='GCC profiles and profile.json from scripts/perf/pgo_train.py')
 ap.add_argument('--toolchain', type=Path, default=Path('C:/msys64/ucrt64'))
 ap.add_argument('--sdk', type=Path, default=P.parent / 'ps3recomp')
 args = ap.parse_args()
@@ -164,7 +164,7 @@ if args.bundle:
                 ['gtk4-update-icon-cache', '-q', '-f', '-t', u / 'share/icons/hicolor'],
                 ['update-mime-database', u / 'share/mime']):
         subprocess.run([str(u / 'bin' / (cmd[0] + '.exe')), *map(str, cmd[1:])], check=True, env=hook_env)
-    # Name, version and source package of each, for scripts/collect_windows_sources.py.
+    # Name, version and source package of each, for scripts/release/collect_windows_sources.py.
     listed = []
     for name in sorted(packages):
         desc = next((msys_root / 'var/lib/pacman/local').glob(name + '-[0-9]*/desc'), None)
@@ -219,7 +219,7 @@ if p.exists():
 (S / 'app/disc-manifest.json').write_text(json.dumps(manifest, separators=(',', ':')))
 meta = {'version': '0.5.2-windows', 'cpu': 'built on the player computer, -march=native',
         'elf_sha256': spec['eboot_sha256'], 'sdk_commit': spec['sdk_commit'],
-        'rpcs3': json.loads((P / 'packaging/rpcs3-windows.json').read_text()),
+        'rpcs3': json.loads((P / 'packaging/windows/rpcs3-windows.json').read_text()),
         'codecs': {p.name: sha(p) for p in (P / 'firmware/dev_flash/sys/external').glob('*.pic')},
         'game_libs': [], 'sevenzip_sha256': sha(S / 'usr/bin/7z.exe'), 'pgo': pgo}
 (S / 'app/package.json').write_text(json.dumps(meta, indent=2))

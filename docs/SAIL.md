@@ -46,7 +46,7 @@ cmake --build --preset linux-vulkan
 bash tests/test_sail.sh
 SANITIZE=1 bash tests/test_sail.sh
 SANITIZE=1 bash tests/test_sail_audio.sh
-PORT_TEST_SECONDS=300 ./run-vulkan.sh
+PORT_TEST_SECONDS=300 ./scripts/run-vulkan.sh
 ```
 
 The test uses a synthetic six-frame video. It checks deferred callbacks,

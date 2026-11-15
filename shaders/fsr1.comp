@@ -1,7 +1,7 @@
 #version 450
 // AMD FidelityFX Super Resolution 1.0 for the window present: EASU upscales
 // the game's frame to the window's size, RCAS sharpens the result. Built
-// twice by scripts/build_fsr1_shaders.py, with FSR1_EASU or FSR1_RCAS, into
+// twice by scripts/build/build_fsr1_shaders.py, with FSR1_EASU or FSR1_RCAS, into
 // fsr1_spv.h; vulkan_bridge.c runs the two passes (vk_fsr_record). The
 // integration follows the GLSL path of AMD's FSR sample (FSR_Pass.glsl).
 #extension GL_GOOGLE_include_directive : enable
