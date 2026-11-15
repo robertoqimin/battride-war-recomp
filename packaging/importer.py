@@ -216,6 +216,16 @@ def gpu_names(probe_output):
     return [m[1] for m in re.finditer(r'^GPU: (.+) \(Vulkan [0-9.]+\)', probe_output, re.M)]
 
 
+SOFTWARE_GPU = re.compile(r'llvmpipe|lavapipe|softpipe|swiftshader', re.I)
+
+
+def hardware_gpus(names):
+    """The names worth offering: software renderers (Mesa's llvmpipe, SwiftShader)
+    run the game on the CPU at a few frames a second, so they are left out of
+    the list. The game's device numbers stay those of the full list."""
+    return [n for n in names if not SOFTWARE_GPU.search(n)]
+
+
 def gpu_env(name, names):
     """PS3RECOMP_VK_DEVICE for a GPU chosen by name (the order can change with
     drivers); empty for Automatic or a GPU no longer present, and the game
@@ -370,6 +380,11 @@ class Runner:
             elif capture:
                 output = p.communicate()[0]
             code = p.wait()
+        except BaseException:
+            # Ctrl+C reaches only this process: the tool runs in a session of
+            # its own and would go on writing into a folder being removed.
+            self.stop()
+            raise
         finally:
             with self.lock:
                 if self.current is p:
@@ -581,9 +596,17 @@ class Package:
             except OSError:
                 pass
             return data / 'game'
-        except BaseException:
+        except BaseException as e:
             for p in committed:
                 shutil.rmtree(p)
+            if runner.cancelled.is_set() or isinstance(e, KeyboardInterrupt):
+                # Stopped by the user: no RPCS3 left behind either (it is
+                # downloaded or copied again on the next import).
+                shutil.rmtree(Path(data) / 'tools' / ('rpcs3-' + self.meta['rpcs3']['version']), ignore_errors=True)
+                try:
+                    (Path(data) / 'tools').rmdir()
+                except OSError:
+                    pass
             raise
         finally:
             shutil.rmtree(stage, ignore_errors=True)

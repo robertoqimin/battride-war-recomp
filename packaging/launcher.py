@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -12,7 +13,7 @@ import time
 
 from importer import (CONTROLS, DISPLAY_FILTERS, DISPLAY_MODES, EXE, PAD_BUTTONS, PAD_CONTROLS, RENDER_SCALES,
                       STICK_DEADZONE, WINDOWS, ImportError, Package, Runner, binding_ok,
-                      clear_interrupted_install, gpu_env, gpu_names)
+                      clear_interrupted_install, gpu_env, gpu_names, hardware_gpus)
 
 ROOT = Path(os.environ.get('PORT_APPDIR', Path(__file__).resolve().parents[1]))
 # The log files of one launch, in the order they are written.
@@ -128,11 +129,22 @@ def main():
     if args.import_only:
         data.mkdir(parents=True, exist_ok=True)
         runner = Runner()
-        with (data / 'import.log').open('wb') as log:
-            package.import_iso(args.import_only, data, runner, print, log, args.rpcs3)
-        print('Import verified:', data)
-        with (data / 'build.log').open('wb') as log:
-            print('Game built:', package.build_runner(data, runner, print, log))
+        # A closed terminal or kill ends it like Ctrl+C: the running tool is
+        # stopped and the half-written import removed.
+        def interrupt(*_):
+            raise KeyboardInterrupt
+        for name in ('SIGTERM', 'SIGHUP'):
+            if hasattr(signal, name):
+                signal.signal(getattr(signal, name), interrupt)
+        try:
+            with (data / 'import.log').open('wb') as log:
+                package.import_iso(args.import_only, data, runner, print, log, args.rpcs3)
+            print('Import verified:', data)
+            with (data / 'build.log').open('wb') as log:
+                print('Game built:', package.build_runner(data, runner, print, log))
+        except KeyboardInterrupt:
+            print('Cancelled.')
+            sys.exit(130)
         return
     # The AppImage's SVG icon loader, at the path this AppImage is mounted on.
     loaders = ROOT / 'usr/lib/gdk-pixbuf'
@@ -383,7 +395,7 @@ def main():
             render.add(self.scale)
             # By name: Vulkan's device order can change with drivers. Laptops
             # with two GPUs get the discrete one unless another is chosen.
-            gpus = [('', 'Automatic (the dedicated GPU, if any)')] + [(n, n) for n in package.list_gpus()]
+            gpus = [('', 'Automatic (the dedicated GPU, if any)')] + [(n, n) for n in hardware_gpus(package.list_gpus())]
             if display.get('gpu') and display['gpu'] not in [k for k, _ in gpus]:
                 gpus.append((display['gpu'], display['gpu'] + ' (not found now)'))
             self.gpu = combo_row('Graphics card', 'Which GPU draws the game', gpus, display.get('gpu'), '')

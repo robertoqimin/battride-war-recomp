@@ -83,6 +83,7 @@ The builder refuses existing stage/output paths. It never bundles libc, the dyna
 - **Interrupted first start:** if the game is closed while it installs its data on first start, the launcher removes the half-installed data before the next start and the game installs it again, instead of stopping at the title screen.
 - **Window name:** the game window is titled **Battride War** (it was `ps3recomp`), and its Wayland app_id and X11 class are `battride-recomp`, as the AppImage's desktop file.
 - **Windows:** the same release has a Windows package ([WINDOWS_PACKAGE.md](WINDOWS_PACKAGE.md)). The sources moved into `port/`, the scripts into `scripts/{build,perf,release}/` and the packaging into `packaging/{linux,windows}/`; the optimization profiles were renamed to match.
+- **Launcher:** the Graphics card list no longer offers software renderers (llvmpipe). Ctrl+C or closing the terminal during `--import-only` now also stops 7-Zip, RPCS3 or the build and removes the half-written folder, and Stop removes the unpacked RPCS3 in `tools/` as well.
 - **Pipeline cache:** the game keeps its compiled graphics pipelines in `~/.cache/battride-war-port/`, one file per GPU, so scenes after the first run do not wait for the driver to compile them again (on the GTX 1650, 113 ms of compiling down to 13 ms for the first fight; up to 1.5 s when the driver's own cache is empty). Deleting the folder is safe.
 - The game is rebuilt once on first launch.
 

@@ -131,11 +131,16 @@ unwritten pages, and reusing converted vertices across frames.
 
 ## 3. Launcher fixes
 
-- [ ] The GPU list leaves out software renderers (`llvmpipe`).
-- [ ] Ctrl+C during `--import-only` also stops the extraction tool and
-      removes `.import-*` (tools run in their own session, so the signal does
-      not reach them; seen on November 14).
-- [ ] The `tools/` folder (unpacked RPCS3) is removed after **Stop** too.
+- [x] The GPU list leaves out software renderers (`llvmpipe`, `lavapipe`,
+      `softpipe`, SwiftShader); the game's device numbers still count them.
+- [x] Ctrl+C, SIGTERM or SIGHUP during `--import-only` stops the running tool
+      (its session is killed) and removes `.import-*` or the build folder;
+      exit code 130. Tested November 15 with the signal sent while 7-Zip, RPCS3
+      (`--decrypt`, `--installfw`) and the build ran: nothing left but the
+      logs, no tool process left (an import already verified is kept).
+- [x] The `tools/` folder (unpacked RPCS3) is removed after **Stop** and
+      Ctrl+C too (tested through `Runner.stop()`); RPCS3 is copied or
+      downloaded again on the next import.
 - [ ] **Decision:** update phase A, i.e. drop the package version from the build
       identity and keep the build folder between versions, so later updates
       recompile only what changed. If it ships in 0.6.0, 0.6.1 already

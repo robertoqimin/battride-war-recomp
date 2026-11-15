@@ -120,6 +120,14 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual(m.gpu_env('NVIDIA GeForce GTX 1650',names),{'PS3RECOMP_VK_DEVICE':'1'})
         self.assertEqual(m.gpu_env('',names),{})
         self.assertEqual(m.gpu_env('Old GPU',names),{})
+    def test_software_renderer_left_out_of_the_list(self):
+        names=['AMD Radeon(TM) Graphics (RADV RENOIR)','NVIDIA GeForce GTX 1650',
+               'llvmpipe (LLVM 19.1.7, 256 bits)']
+        self.assertEqual(m.hardware_gpus(names),names[:2])
+        self.assertEqual(m.hardware_gpus(['SwiftShader Device (Subzero)']),[])
+        # The game's device numbers still count the software renderer.
+        self.assertEqual(m.gpu_env('NVIDIA GeForce GTX 1650',['llvmpipe (LLVM 19)','NVIDIA GeForce GTX 1650']),
+                         {'PS3RECOMP_VK_DEVICE':'1'})
     def test_display_env_accepts_only_known_values(self):
         self.assertEqual(m.display_env({'mode':'fullscreen','size':'2560x1440','filter':'linear'}),
             {'PORT_DISPLAY_MODE':'fullscreen','PORT_DISPLAY_SIZE':'2560x1440','PORT_DISPLAY_FILTER':'linear'})
