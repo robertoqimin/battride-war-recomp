@@ -380,6 +380,14 @@ if(NOT PORT_PGO STREQUAL "off")
     endif()
     target_compile_options(${PROJECT_NAME} PRIVATE
         "$<$<COMPILE_LANGUAGE:CXX>:-fprofile-prefix-path=${PORT_PGO_PREFIX}>")
+    # GCC also hashes each function's source file name into the ids profiles
+    # are matched by: compile with this tree's paths relative to the build
+    # directory, so they read the same in the training tree and on the
+    # player's computer (scripts/build/pgo_relpaths.py).
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_COMPILER_LAUNCHER
+        "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build/pgo_relpaths.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}")
     if(PORT_PGO STREQUAL "generate")
         target_compile_options(${PROJECT_NAME} PRIVATE
             "$<$<COMPILE_LANGUAGE:CXX>:-fprofile-generate=${PORT_PGO_DIR}>"
