@@ -10,7 +10,7 @@ GTX 1650 and integrated Radeon RENOIR). **Windows** steps, and anything that
 needs a person at the screen (launcher GUI, closing the window, controllers),
 are done by the developer on Windows 11, same laptop.
 
-## Where things stand (November 15, 2026)
+## Where things stand (November 16, 2026)
 
 - [x] `windows` merged into `main` (fast-forward, `1302673`); Linux checks of
       [reports/2026-11-14-linux-merge.md](reports/2026-11-14-linux-merge.md)
@@ -26,6 +26,54 @@ are done by the developer on Windows 11, same laptop.
 - [x] Leftovers removed (`../bw-test-0.6.0`, the partial sources folder). The
       AppImage built on November 15 is superseded by any change below and is
       rebuilt in step 5.
+- [x] The unpushed commits are on the branch `release-0.6.0` (November 16),
+      so the Windows side can fetch them; `main` on GitHub is unchanged.
+
+## What is left, in order (November 16, 2026)
+
+Steps 1-4 and 5-6 are done on Linux except for the manual tests. This is the
+rest, in the order to do it; details in steps 4-7 below.
+
+**Windows** (MSYS2 UCRT64 shell, in the checkout):
+
+0. Get the code: `git fetch origin && git checkout release-0.6.0`.
+1. A stage for training only, without profiles:
+   ```bash
+   python scripts/release/build_windows_package.py --stage ../stage-train \
+       --sevenzip-dir "C:/Program Files/7-Zip" --bundle
+   ```
+2. The training tree in the importer's layout:
+   ```bash
+   python scripts/perf/pgo_tree.py --stage ../stage-train --root C:/pgo060
+   ```
+3. Train (~3 h): the `cmake` and `pgo_train.py` commands of
+   [WINDOWS.md](WINDOWS.md) ("PGO and the benchmark"), with
+   `<stage>` = `../stage-train`. The profiles end up in `C:/pgo060/pgo`.
+4. Rebuild with `-DPORT_PGO=use` and run `bench_combat.py --runs 3` on each
+   GPU (`PS3RECOMP_VK_DEVICE=0` integrated, `1` the GTX 1650), against a build
+   with the old profiles (`build-pgo/pgo-win`).
+5. The release package, in a new stage, with the new profiles:
+   ```bash
+   python scripts/release/build_windows_package.py --stage ../BattrideWarRecomp \
+       --sevenzip-dir "C:/Program Files/7-Zip" --bundle --pgo C:/pgo060/pgo
+   python scripts/release/collect_windows_sources.py --package ../BattrideWarRecomp \
+       --out ../BattrideWarRecomp-v0.6.0-windows-sources.tar
+   "/c/Program Files/7-Zip/7z.exe" a -tzip -mx=5 BattrideWarRecomp-v0.6.0-windows.zip ../BattrideWarRecomp
+   sha256sum BattrideWarRecomp-v0.6.0-windows.zip > BattrideWarRecomp-v0.6.0-windows.zip.sha256
+   sha256sum ../BattrideWarRecomp-v0.6.0-windows-sources.tar > ../BattrideWarRecomp-v0.6.0-windows-sources.tar.sha256
+   ```
+6. The Windows column of step 6, from the zip extracted to a short folder
+   (`C:\Games`); also whether the pipeline cache removed the 945 ms hitch.
+7. Any fix committed on Windows: `git push origin release-0.6.0`.
+
+**Linux, by hand:** closing the window; controller, keyboard and mouse; the
+30-minute session (step 6).
+
+**Then, step 7:** the report in `docs/reports/` and the docs with the Windows
+numbers; rebuild the AppImage and the Linux sources tar if a shipped file
+changed (both packages come from the same final commit); `git push origin
+main`, tag `v0.6.0`, draft release with the eight files; publish when both
+sides are tested; delete the `release-0.6.0` branch and the test folders.
 
 ## 1. Baseline measurements
 
