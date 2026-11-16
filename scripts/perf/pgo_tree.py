@@ -28,6 +28,8 @@ def main():
     ap.add_argument('--stage', type=Path, required=True)
     ap.add_argument('--root', type=Path, required=True)
     ap.add_argument('--eboot', type=Path, default=REPO / 'game/EBOOT.ELF')
+    ap.add_argument('--dev-flash', type=Path, default=REPO / 'firmware/dev_flash',
+                    help='the firmware codecs, which the importer passes as PS3_DEV_FLASH')
     args = ap.parse_args()
     share = args.stage.resolve() / 'usr/share/battride'
     if not (share / 'port/CMakeLists.txt').is_file():
@@ -40,8 +42,14 @@ def main():
     (port / 'game').mkdir(exist_ok=True)
     shutil.copy2(args.eboot, port / 'game/EBOOT.ELF')
     print('Translating the EBOOT in %s ...' % port, flush=True)
+    # As the importer's build: with the firmware, the audio task's MP3 codec is
+    # translated too, and training runs the same code as the player's game.
+    if not (args.dev_flash / 'sys/external/flashMP3.pic').is_file():
+        sys.exit('No firmware codecs in %s (--dev-flash)' % args.dev_flash)
+    env = {**os.environ, 'PS3_DEV_FLASH': str(args.dev_flash.resolve())}
     code = subprocess.call([sys.executable, str(port / 'scripts/build/generate.py'),
-                            '--sdk', str(share / 'ps3recomp'), '--jobs', str(os.cpu_count() or 2)], cwd=port)
+                            '--sdk', str(share / 'ps3recomp'), '--jobs', str(os.cpu_count() or 2)],
+                           cwd=port, env=env)
     if code:
         sys.exit('generate.py failed (%d)' % code)
     print('Ready. Configure %s with -DPS3RECOMP_DIR=%s -DPORT_PGO=generate as the importer does.'
