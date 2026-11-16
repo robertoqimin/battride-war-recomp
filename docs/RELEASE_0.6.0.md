@@ -158,11 +158,18 @@ after every code change above.
       pairs on the integrated GPU: 59.0 against 58.3 fps, worst 5 s 54.3
       against 53.0 (better in every pair), p95 19.5 against 19.7 ms, frames
       over 16.7 ms 1,831 against 1,956 ([PERFORMANCE.md](PERFORMANCE.md)).
-- [ ] **Windows** (MSYS2 GCC):
-      `cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=generate`,
-      `cmake --build build-pgo -j 2`,
-      `python scripts/perf/pgo_train.py --build build-pgo`, rebuild with
-      `-DPORT_PGO=use`, A/B (~3 h). The profiles go to `build-pgo/pgo-win`.
+- [x] **Linux, the player's build** (November 15): the game the AppImage built
+      got only part of the profiles (57.9 against 58.9 fps, worst 5 s 50.4
+      against 53.7), because GCC hashes the source file names. PGO builds now
+      compile with relative paths (`scripts/build/pgo_relpaths.py`) and the
+      profiles are trained in the importer's layout
+      (`scripts/perf/pgo_tree.py`); the AppImage's own build then measured
+      58.7 against 58.5 fps, worst 5 s 54.3 against 54.0, in three pairs.
+- [ ] **Windows** (MSYS2 GCC): train in the importer's layout, as in
+      [WINDOWS.md](WINDOWS.md) ("PGO and the benchmark"): `pgo_tree.py` from
+      the package stage, configure `<root>/build` with `-DPORT_PGO=generate`,
+      `pgo_train.py`, rebuild with `-DPORT_PGO=use`, A/B (~3 h). The profiles
+      go to `build-pgo/pgo-win`.
 
 ## 5. Release builds
 

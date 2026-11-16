@@ -86,13 +86,26 @@ run on Windows from the UCRT64 shell, with ffmpeg on `PATH` (no per-thread CPU,
 `--pin` or `--stacks` there: they read `/proc`):
 
 ```bash
-cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=generate
-cmake --build build-pgo -j 2
-python scripts/perf/pgo_train.py --build build-pgo
-cmake --preset windows-vulkan -B build-pgo -DPORT_PGO=use
-cmake --build build-pgo -j 3
-python scripts/perf/bench_combat.py --binary build-pgo/kamenriderbattridewarsport.exe --runs 3
+# a package stage first (build_windows_package.py), then the importer's layout:
+python scripts/perf/pgo_tree.py --stage <stage> --root C:/pgo060
+cmake -S C:/pgo060/port -B C:/pgo060/build -G Ninja -DCMAKE_C_COMPILER=clang \
+  -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS_DEBUG=-O2 \
+  -DCMAKE_CXX_FLAGS_DEBUG=-O2 -DPORT_ENABLE_SPU=ON -DPS3RECOMP_RSX_VULKAN=ON \
+  -DPORT_MARCH=native -DPS3RECOMP_DIR=<stage>/usr/share/battride/ps3recomp \
+  -DPython3_EXECUTABLE=$(which python) -DPORT_PGO=generate -DPORT_PGO_DIR=C:/pgo060/pgo
+cmake --build C:/pgo060/build -j 2
+python scripts/perf/pgo_train.py --build C:/pgo060/build
+cmake -S C:/pgo060/port -B C:/pgo060/build -DPORT_PGO=use -DPORT_PGO_DIR=C:/pgo060/pgo-use  # a copy of pgo
+cmake --build C:/pgo060/build -j 3
+python scripts/perf/bench_combat.py --binary C:/pgo060/build/kamenriderbattridewarsport.exe --runs 3
 ```
+
+Train in that layout, not in the repository: PGO builds compile with the
+tree's paths relative to the build directory (`scripts/build/pgo_relpaths.py`),
+and the launcher's build has its sources in `<work>/port` and builds in
+`<work>/build`; profiles trained elsewhere only partly apply there
+([APPIMAGE.md](APPIMAGE.md), "Optimization profiles"). The configure options
+are the importer's (`packaging/importer.py`, `build_runner`).
 
 A training session ends with Ctrl+Break to the game's process group, which the
 training build takes as `SIGTERM` (`SIGBREAK` in `main.cpp`). MinGW GCC
