@@ -267,6 +267,7 @@ typedef struct vk_state {
     int              fs_w, fs_h;      /* exclusive fullscreen video mode    */
     int              stretch;         /* fill the window, ignoring 16:9     */
     int              sc_dirty;        /* window resized: rebuild swapchain  */
+    int              sc_no_area;      /* minimized: no present until it has an area again */
     u32              res_scale;       /* PORT_RENDER_SCALE: internal resolution */
     vk_image         display;         /* the frame at res_scale, for the window */
     /* FSR 1 upscaling into the window (vk_fsr_*). */
@@ -2295,7 +2296,15 @@ static int vk_create_swapchain(void)
         if (ext.width  > caps.maxImageExtent.width)  ext.width  = caps.maxImageExtent.width;
         if (ext.height > caps.maxImageExtent.height) ext.height = caps.maxImageExtent.height;
     }
-    if (!ext.width || !ext.height) { VK_LOG("window has no drawable area\n"); return -1; }
+    /* A minimized window (exclusive fullscreen minimizes on Alt+Tab) reports
+     * 0x0 on Windows. Not an error: keep the old swapchain and try again. */
+    if (!ext.width || !ext.height) {
+        if (!s_vk.sc_no_area) VK_LOG("window has no drawable area (minimized): presents paused\n");
+        s_vk.sc_no_area = 1;
+        return 1;
+    }
+    if (s_vk.sc_no_area) VK_LOG("window has a drawable area again: presents resumed\n");
+    s_vk.sc_no_area = 0;
 
     u32 count = caps.minImageCount + 1;
     if (caps.maxImageCount && count > caps.maxImageCount) count = caps.maxImageCount;
@@ -2375,8 +2384,12 @@ static int vk_create_swapchain(void)
 
 static void vk_swapchain_lost(void)
 {
-    vk_device_idle();
-    if (vk_create_swapchain()) vk_window_drop("the swapchain could not be recreated");
+    /* While paused nothing has been presented since the GPU last idled here,
+     * and a retry that finds no area changes nothing: no need to wait again. */
+    if (!s_vk.sc_no_area) vk_device_idle();
+    const int r = vk_create_swapchain();
+    if (r < 0) vk_window_drop("the swapchain could not be recreated");
+    else if (r > 0) __atomic_store_n(&s_vk.sc_dirty, 1, __ATOMIC_RELEASE);   /* no area: retry next frame */
 }
 
 /* ---------------------------------------------------------------------------
@@ -2718,12 +2731,20 @@ static void vk_window_check_resize(void)
     if (__atomic_exchange_n(&s_vk.sc_dirty, 0, __ATOMIC_ACQ_REL)) vk_swapchain_lost();
 }
 
+/* While minimized there is nothing to present into; the game runs on. The
+ * check is the surface's own (vk_create_swapchain), so it costs one
+ * capabilities query per frame only while the window has no area. */
+static int vk_window_paused(void)
+{
+    return s_vk.sc_no_area;
+}
+
 /* Blit the offscreen target into the next swapchain image and present it. */
 static void vk_present_window(void)
 {
     if (!s_vk.windowed || !s_vk.swapchain) return;
     vk_window_check_resize();
-    if (!s_vk.windowed || !s_vk.swapchain) return;
+    if (!s_vk.windowed || !s_vk.swapchain || vk_window_paused()) return;
 
     u32 idx = 0;
     VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
@@ -2808,7 +2829,7 @@ static int vk_window_record(VkCommandBuffer cb, u32* idx)
 {
     if (!s_vk.windowed || !s_vk.swapchain) return 0;
     vk_window_check_resize();
-    if (!s_vk.windowed || !s_vk.swapchain) return 0;
+    if (!s_vk.windowed || !s_vk.swapchain || vk_window_paused()) return 0;
     VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
                                         s_vk.sem_acquire, VK_NULL_HANDLE, idx);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) { vk_swapchain_lost(); return 0; }
@@ -4860,9 +4881,13 @@ static int vk_init_all(u32 width, u32 height, const char* title)
 
     if (s_vk.windowed) {
         VkSemaphoreCreateInfo semi = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-        if (pvkCreateSemaphore(s_vk.device, &semi, NULL, &s_vk.sem_acquire) != VK_SUCCESS ||
-            vk_create_swapchain())
+        if (pvkCreateSemaphore(s_vk.device, &semi, NULL, &s_vk.sem_acquire) != VK_SUCCESS)
             vk_window_drop("the swapchain could not be created");
+        else {
+            const int r = vk_create_swapchain();
+            if (r < 0) vk_window_drop("the swapchain could not be created");
+            else if (r > 0) __atomic_store_n(&s_vk.sc_dirty, 1, __ATOMIC_RELEASE);
+        }
     }
     return 0;
 }
