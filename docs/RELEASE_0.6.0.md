@@ -255,20 +255,20 @@ after every code change above.
       (`collect_sources.py --runtime-commit fedfad51acc2860b2916a1eef32ba4a500ff31ef`),
       a `.sha256` for each file. The type2 runtime and 7-Zip come from the 0.5.2
       AppImage (hashes checked against its `app/package.json`).
-- [x] **Windows, rebuilt November 16 from `a820adc`, not uploaded yet**, in
+- [x] **Windows, rebuilt November 16 from `0f42e4d`, not uploaded yet**, in
       `C:\Users\qimin\Documents`: `BattrideWarRecomp-v0.6.0-windows.zip`
-      (741 MB, sha256 `62364dc3790f1e2f831445f9e3b212eb0fa2f5455f91ecf3a8bbf8fe5b85f437`)
+      (741 MB, sha256 `739c007b6fb153b0ced715b662295e696ef019a19ebc2921e97ff426a618e80a`)
       and `BattrideWarRecomp-v0.6.0-windows-sources.tar` (2.28 GB, 166 source
       archives and `SOURCES.md`, sha256
       `672b19659fbb71101df01aa41aa537bd4606ce96516c3e6589d15eaf0f0a8fb7`; the
       bundled MSYS2 packages did not change, so it was kept), each with a
       `.sha256`. Version `0.6.0-windows`, `--pgo C:/pgo060m/pgo` (the two
-      fixes are C files, which PGO does not cover). The first zip, from
-      `de9b05c` (`3abe9aad…`), is superseded.
+      fixes are C files, which PGO does not cover). The zips from `de9b05c`
+      (`3abe9aad…`) and `a820adc` (`62364dc3…`) are superseded.
 - [ ] **Linux: rebuild the AppImage and its sources tar from the final
-      commit.** `a820adc` changed shipped files after `1e9a6e4`:
+      commit.** `5724ff2`, `a820adc` and `0f42e4d` changed shipped files after `1e9a6e4`:
       `port/graphics/vulkan_bridge.c` (shared: a minimized window pauses
-      presents instead of dropping the window) and `port/audio/audio_bridge.c`
+      presents and releases its swapchain instead of dropping the window) and `port/audio/audio_bridge.c`
       (Windows-only code). Check on Linux that minimizing the window and
       restoring it still shows the game.
 - [ ] **Windows** (reference): from the MSYS2 UCRT64 shell, in a checkout of the final
@@ -366,9 +366,12 @@ to end on both GPUs.
   removed it is still open.
 - **Found by hand, fixed (November 16):** in exclusive fullscreen, Alt+Tab
   minimized the window and the game dropped it for good (no picture after);
-  fixed in `5724ff2`. The intro music crackled: the device queue ran dry
+  fixed in `5724ff2`, which then kept the swapchain while minimized, so the
+  last frame stayed in front of the desktop; `0f42e4d` releases it while
+  minimized. Alt+Tab checked by hand: the desktop shows and the game comes
+  back. The intro music crackled: the device queue ran dry
   about twice every 5 s; fixed in `a820adc` (0 after the first 10 s,
-  `PORT_AUDIO_STATS`). The movie's own audio port still has 2-4 late blocks
+  `PORT_AUDIO_STATS`; confirmed by ear). The movie's own audio port still has 2-4 late blocks
   of 938 (the game's decoder, as before).
 - **Still to do on Windows, by hand:** closing the window, controller, keyboard
   and mouse through the launcher; Alt+Tab and the taskbar name; the 30-minute
