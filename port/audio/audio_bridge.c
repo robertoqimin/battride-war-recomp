@@ -45,6 +45,10 @@ static void* port_audio_mix(void* unused) {
     const char* path=getenv("AUDIO_WAV");FILE* dump=path?fopen(path,"wb"):NULL;
     int stats_on=getenv("PORT_AUDIO_STATS")!=NULL;port_audio_stats st;memset(&st,0,sizeof st);st.t0=port_audio_ns();
     fprintf(stderr,"[port-audio] POSIX mixer paced to the output device, 48000 Hz\n");
+#ifdef _WIN32
+    unsigned win_n=0,win_min=~0u;     /* the device queue's lowest point over 32 blocks */
+    epoch-=CELL_AUDIO_BLOCK_SAMPLES*1000000000ull/CELL_AUDIO_SAMPLE_RATE;   /* start a block ahead of the device */
+#endif
     while(s_mix_thread_running) {
         int room=audio_backend_room();
         if(room>=0 && room<CELL_AUDIO_BLOCK_SAMPLES){audio_backend_wait();continue;}
@@ -53,13 +57,37 @@ static void* port_audio_mix(void* unused) {
          * so room alone mixes in bursts: the guest wakes on the first block and
          * the second is read empty, every other block silent. Keep the clock's
          * spacing unless the device is about to run out. */
-        if(room<0 || audio_backend_queued_samples()>=CELL_AUDIO_BLOCK_SAMPLES) {
+        const unsigned queued=room<0?0:audio_backend_queued_samples();
+        if(room>=0 && queued<win_min) win_min=queued;   /* lowest point, early mixes included */
+        if(room<0 || queued>=CELL_AUDIO_BLOCK_SAMPLES) {
 #else
         if(room<0) {
 #endif
             unsigned long long now=port_audio_ns(),due=epoch+blocks*CELL_AUDIO_BLOCK_SAMPLES*1000000000ull/CELL_AUDIO_SAMPLE_RATE;
             if(now<due) {struct timespec delay={0,1000000};nanosleep(&delay,NULL);continue;}
             if(now-due>50000000)epoch=now-blocks*CELL_AUDIO_BLOCK_SAMPLES*1000000000ull/CELL_AUDIO_SAMPLE_RATE;
+#ifdef _WIN32
+            /* Kept to the clock alone, the queue touched zero about twice every
+             * 5 s, a click each time (the intro music), before the rule above
+             * mixed early: the queue swings by about two blocks every device
+             * period and the sound card's clock is not the CPU's. So the mix
+             * starts a block ahead and follows the device: over each 32 blocks
+             * (~170 ms), if the queue fell below a block the clock moves a
+             * quarter block sooner, and if it stayed above two blocks an
+             * eighth later. A larger fixed margin did not work: it mixed two
+             * blocks back to back, which the movie's audio port cannot keep up
+             * with (every other block empty), and neither may catching up from
+             * more than two blocks behind. */
+            if(room>=0) {
+                const unsigned long long block_ns=CELL_AUDIO_BLOCK_SAMPLES*1000000000ull/CELL_AUDIO_SAMPLE_RATE;
+                if(++win_n==32) {
+                    if(win_min<CELL_AUDIO_BLOCK_SAMPLES) epoch-=block_ns/4;     /* had to mix early */
+                    else if(win_min>2*CELL_AUDIO_BLOCK_SAMPLES) epoch+=block_ns/8;
+                    win_n=0;win_min=~0u;
+                }
+                if(now>due+2*block_ns) epoch+=now-due;   /* waited on a full queue: restart from now */
+            }
+#endif
         }
         if(stats_on) port_audio_scan(&st);
         audio_mix_one_block();blocks++;
