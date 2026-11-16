@@ -197,19 +197,56 @@ after every code change above.
 
 | Test | Linux (AppImage) | Windows (zip) |
 |---|---|---|
-| `--check` / the launcher opens without a noticeable delay | [ ] | [ ] |
-| New import through play: movie, menus, STG02 | [ ] | [ ] |
-| Upgrade from a 0.5.2 data folder rebuilds once and keeps saves | [ ] | n/a |
-| GPU list in the launcher; the chosen GPU is used (`using device N`) | [ ] | [ ] |
-| Interrupted first data installation recovers | [ ] | [ ] |
-| **Stop** during extraction and build leaves no temporary files | [ ] | [ ] |
-| Window, Alt+Tab and taskbar show **Battride War** | [ ] | [ ] |
+| `--check` / the launcher opens without a noticeable delay | [x] | [ ] |
+| New import through play: movie, menus, STG02 | [x] | [ ] |
+| Upgrade from a 0.5.2 data folder rebuilds once and keeps saves | [x] | n/a |
+| GPU list in the launcher; the chosen GPU is used (`using device N`) | [x] | [ ] |
+| Interrupted first data installation recovers | [x] | [ ] |
+| **Stop** during extraction and build leaves no temporary files | [x] | [ ] |
+| Window, Alt+Tab and taskbar show **Battride War** | [x] | [ ] |
 | Closing the window ends the game; controller, keyboard and mouse | [ ] | [ ] |
-| `bench_combat.py` on both GPUs against 0.5.2 | [ ] | [ ] |
+| `bench_combat.py` on both GPUs against 0.5.2 | [x] | [ ] |
 | 30-minute session without dropouts or stalls | [ ] | [ ] |
 
 **Criterion:** no regression against 0.5.2 on Linux, and Windows working end
 to end on both GPUs.
+
+### Linux results (November 15-16, AppImage built from `1e9a6e4`)
+
+- **Launcher:** `--check` passes; the window is up in about 1.5 s.
+- **New import through play:** an empty data folder (`build-pgo11/player-test`):
+  import and build, then the launcher's Play environment (`game_env` +
+  `gpu_env`, driven with scripted presses) through the movie and menus to the
+  first STG02 fight in 131 s.
+- **Upgrade from 0.5.2:** a data folder imported and built by the 0.5.2
+  AppImage, with saves: 0.6.0 rebuilt once (11 min, `build.json` package
+  0.6.0), the saves stayed byte-identical, a second start reused the build
+  (1 s), and the game loaded the saves and reached the fight.
+- **GPU list:** offers the Radeon and the GTX 1650, not llvmpipe; choosing
+  each by name gave `using device 0` and `using device 1`; Automatic took the
+  GTX.
+- **Interrupted data installation:** the game killed 3 s after
+  `BLJS10220DATA.start` appeared; the next start removed the half-installed
+  folder, installed again (`.installed` written) and played.
+- **Ctrl+C / Stop:** through the AppImage, during the ISO extraction and
+  during the build: exit 130, only the logs (and the verified import, for the
+  build) left, no tool process left. Stop through `Runner.stop()` in step 3.
+- **Window name:** `set_title("Battride War")`, `set_app_id("battride-recomp")`
+  (Wayland, GTX chosen).
+- **Against 0.5.2**, the game each AppImage built, three interleaved pairs per
+  GPU, STG02, 60 s:
+
+  | | 0.5.2 | 0.6.0 |
+  |---|---|---|
+  | Integrated Radeon: average / worst 5 s / p95 | 54.8 fps / 46.3 / 23.0 ms | 58.5 fps / 53.9 / 19.5 ms |
+  | GTX 1650: average / worst 5 s / p95 | 57.0 fps / 49.0 / 21.0 ms | 59.7 fps / 57.9 / 19.1 ms |
+
+  Better in all six pairs; 1% low 37.1 to 41.6 and 38.8 to 44.0 fps.
+- **Still to do on Linux:** closing the window, controller, keyboard and mouse
+  (by hand, through the launcher); the 30-minute session (a scripted run was
+  stopped early at the user's request).
+- **Noted:** the game log shows a few `xkbcommon: ERROR ... dead_hamza` lines:
+  the bundled libxkbcommon predates the host's Compose file; harmless.
 
 ## 7. Publication
 
