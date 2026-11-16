@@ -34,7 +34,11 @@ are done by the developer on Windows 11, same laptop.
 Steps 1-4 and 5-6 are done on Linux except for the manual tests. This is the
 rest, in the order to do it; details in steps 4-7 below.
 
-**Windows** (MSYS2 UCRT64 shell, in the checkout):
+**Windows: steps 0-7 done on November 16** (results in step 4, step 5 and the
+Windows column of step 6), except the tests that need a person at the screen.
+The training tree was `C:/pgo060m`, not `C:/pgo060`: the first tree there had
+been made without the MP3 codec (see step 4) and could not be removed from
+that session. The commands, for the next time:
 
 0. Get the code: `git fetch origin && git checkout release-0.6.0`.
 1. A stage for training only, without profiles:
@@ -98,7 +102,7 @@ item in step 2 whose cost is under 3% of its thread is dropped.
 
 **Windows**
 
-- [ ] `bench_combat.py --runs 3` on each GPU.
+- [x] `bench_combat.py --runs 3` on each GPU (step 4, November 16).
 - [ ] A Windows Performance Recorder capture of a fight (`PORT_PROFILE` is not
       available on Windows, `port/core/stubs.cpp:376`).
 
@@ -213,11 +217,28 @@ after every code change above.
       profiles are trained in the importer's layout
       (`scripts/perf/pgo_tree.py`); the AppImage's own build then measured
       58.7 against 58.5 fps, worst 5 s 54.3 against 54.0, in three pairs.
-- [ ] **Windows** (MSYS2 GCC): train in the importer's layout, as in
-      [WINDOWS.md](WINDOWS.md) ("PGO and the benchmark"): `pgo_tree.py` from
-      the package stage, configure `<root>/build` with `-DPORT_PGO=generate`,
-      `pgo_train.py`, rebuild with `-DPORT_PGO=use`, A/B (~3 h). The profiles
-      go to `build-pgo/pgo-win`.
+- [x] **Windows** (MSYS2 GCC 16.2.0), November 16: trained in the importer's
+      layout (`C:/pgo060m`, two sessions, 93 profiles in `C:/pgo060m/pgo`).
+      Built with them, the tree reported no missing profile and 2 mismatches;
+      with the old ones (`build-pgo/pgo-win`, the repository layout) 209
+      mismatches and the two SDK files missing. Three interleaved pairs per
+      GPU, STG02, 60 s, better in all six:
+
+      | | Old profiles | New profiles |
+      |---|---|---|
+      | Integrated Radeon: average / worst 5 s / p95 | 47.9 fps / 40.9 / 26.7 ms | 56.5 fps / 48.7 / 21.8 ms |
+      | GTX 1650: average / worst 5 s / p95 | 54.0 fps / 43.3 / 24.4 ms | 58.4 fps / 53.3 / 20.6 ms |
+
+- [ ] **`pgo_tree.py` translated the audio task without its MP3 codec**: it
+      did not pass the firmware to `generate.py`, while the importer does
+      (`PS3_DEV_FLASH`), so the training ran the codec interpreted while the
+      player's game runs it translated. Fixed in `de9b05c` (`--dev-flash`,
+      default `firmware/dev_flash`); the Windows training above used the fix
+      ("mp3: 366 entries translated"). **Linux:** the November 15 profiles
+      were probably trained the same way (check the training tree's
+      `generate.py` output for "flashMP3.pic: not found"). The effect is
+      likely small, as PGO covers only the C++ files and the codec is C, but
+      the training load differed; retraining is a decision for Linux.
 
 ## 5. Release builds
 
@@ -234,7 +255,16 @@ after every code change above.
       (`collect_sources.py --runtime-commit fedfad51acc2860b2916a1eef32ba4a500ff31ef`),
       a `.sha256` for each file. The type2 runtime and 7-Zip come from the 0.5.2
       AppImage (hashes checked against its `app/package.json`).
-- [ ] **Windows:** from the MSYS2 UCRT64 shell, in a checkout of the final
+- [x] **Windows, built November 16 from `de9b05c`, not uploaded yet**, in
+      `C:\Users\qimin\Documents`: `BattrideWarRecomp-v0.6.0-windows.zip`
+      (741 MB, sha256 `3abe9aad0a2038a375b6288f1fb3865d1122185f35c68b23cc63d29289e32f64`)
+      and `BattrideWarRecomp-v0.6.0-windows-sources.tar` (2.28 GB, 166 source
+      archives and `SOURCES.md`, sha256
+      `672b19659fbb71101df01aa41aa537bd4606ce96516c3e6589d15eaf0f0a8fb7`), each
+      with a `.sha256`. Version `0.6.0-windows`, `--pgo C:/pgo060m/pgo`. No
+      shipped file changed since the AppImage's `1e9a6e4`, so both packages
+      carry the same sources.
+- [ ] **Windows** (reference): from the MSYS2 UCRT64 shell, in a checkout of the final
       `main` ([WINDOWS_PACKAGE.md](WINDOWS_PACKAGE.md)):
       `build_windows_package.py --bundle --pgo build-pgo/pgo-win`,
       `collect_windows_sources.py`, the zip
@@ -245,15 +275,15 @@ after every code change above.
 
 | Test | Linux (AppImage) | Windows (zip) |
 |---|---|---|
-| `--check` / the launcher opens without a noticeable delay | [x] | [ ] |
-| New import through play: movie, menus, STG02 | [x] | [ ] |
+| `--check` / the launcher opens without a noticeable delay | [x] | [x] |
+| New import through play: movie, menus, STG02 | [x] | [x] |
 | Upgrade from a 0.5.2 data folder rebuilds once and keeps saves | [x] | n/a |
-| GPU list in the launcher; the chosen GPU is used (`using device N`) | [x] | [ ] |
-| Interrupted first data installation recovers | [x] | [ ] |
-| **Stop** during extraction and build leaves no temporary files | [x] | [ ] |
-| Window, Alt+Tab and taskbar show **Battride War** | [x] | [ ] |
+| GPU list in the launcher; the chosen GPU is used (`using device N`) | [x] | [x] |
+| Interrupted first data installation recovers | [x] | [x] |
+| **Stop** during extraction and build leaves no temporary files | [x] | [x] |
+| Window, Alt+Tab and taskbar show **Battride War** | [x] | window title only |
 | Closing the window ends the game; controller, keyboard and mouse | [ ] | [ ] |
-| `bench_combat.py` on both GPUs against 0.5.2 | [x] | [ ] |
+| `bench_combat.py` on both GPUs against 0.5.2 | [x] | [x] (against the old profiles) |
 | 30-minute session without dropouts or stalls | [ ] | [ ] |
 
 **Criterion:** no regression against 0.5.2 on Linux, and Windows working end
@@ -295,6 +325,42 @@ to end on both GPUs.
   stopped early at the user's request).
 - **Noted:** the game log shows a few `xkbcommon: ERROR ... dead_hamza` lines:
   the bundled libxkbcommon predates the host's Compose file; harmless.
+
+### Windows results (November 16, the zip extracted to `C:\Games`)
+
+- **`--check`** passes with a plain Windows `PATH`; the launcher window
+  (`BattrideWarRecomp.cmd`) is up in about 3.7 s, listing the GPUs included.
+- **New import through play:** `--import-only` into `C:\Games\bwdata`: import,
+  translation (the MP3 codec translated) and build in about 19 min with 3 jobs;
+  `tools\` removed afterwards. Every profile found, the port's files included;
+  34 mismatch warnings, all in cold code: `main()` (the training build has hooks
+  the final one lacks) and the SDK files `ppu_hle`, `ppu_sysprx`, `ppu_fs`,
+  which the compiler sees under another absolute path than in the training
+  stage. Then the movie, menus and the STG02 fight through `bench_combat.py`.
+- **GPU list:** the Radeon and the GTX 1650; the launcher's Play environment
+  (`game_env` + `gpu_env`, scripted) with each name gave `using device 1` and
+  `using device 0`.
+- **Interrupted data installation:** the game stopped 7 s after
+  `BLJS10220DATA.start`; the next start cleared the folder, installed again
+  (`.installed` after 208 s) and played; no `BROKEN_EXIT_GAMEDATA`.
+- **Stop** (`Runner.stop()`, as the button) 8 s into the ISO extraction: nothing
+  left in the data folder, `tools\` included; 30 s into the build: only the
+  verified import left; no 7-Zip, RPCS3, Ninja or compiler process left.
+- **Window name:** the game window's title is **Battride War** (`tasklist /v`);
+  Alt+Tab and the taskbar not looked at.
+- **Performance**, the game the package built, two runs per GPU: integrated
+  57.4 fps average, worst 5 s 50.8, p95 21.4 ms; GTX 1650 58.4, 53.4, 20.9 ms,
+  as the training tree's PGO build (step 4).
+- **Pipeline cache:** one file per GPU in `%LOCALAPPDATA%\battride-war-port\`
+  (`pipelines-1002-1636.bin`, `pipelines-10de-1f9d.bin`); later runs report it
+  up to date, under 1 ms creating pipelines. No frame over 200 ms inside the
+  fights; the longer frames are scene loads before them. The 945 ms hitch was
+  in a 1,027-draw fight that STG02 does not reach, so whether the cache
+  removed it is still open.
+- **Still to do on Windows, by hand:** closing the window, controller, keyboard
+  and mouse through the launcher; Alt+Tab and the taskbar name; the 30-minute
+  session. The test data folder `C:\Games\bwdata` is imported, built and
+  installed for that (choose it as the data folder in the launcher).
 
 ## 7. Publication
 
