@@ -174,7 +174,14 @@ after every code change above.
 ## 5. Release builds
 
 - [ ] Push `main` with everything; tag `v0.6.0` on the final commit.
-- [ ] **Linux:** AppImage in the Ubuntu 22.04 container
+- [x] **Linux, built November 15 from `1e9a6e4`, not pushed yet:**
+      `dist/v0.6.0/BattrideWarRecomp-v0.6.0-x86_64.AppImage` (sha256
+      `bc75d795…`) and `BattrideWarRecomp-v0.6.0-sources.tar` (`8d64e8fb…`,
+      192 source packages; glibc, linux and pcre2 left the Ubuntu archive and
+      come from 0.5.2's verified copies via `--reuse`). `--check` passes; a
+      new import and build through it measured as the training tree. Rebuild
+      both if a shipped file changes before the tag.
+- [ ] **Linux** (reference): AppImage in the Ubuntu 22.04 container
       ([APPIMAGE.md](APPIMAGE.md), `--pgo build-pgo11/pgo`), sources tar
       (`collect_sources.py --runtime-commit fedfad51acc2860b2916a1eef32ba4a500ff31ef`),
       a `.sha256` for each file. The type2 runtime and 7-Zip come from the 0.5.2
