@@ -2297,10 +2297,17 @@ static int vk_create_swapchain(void)
         if (ext.height > caps.maxImageExtent.height) ext.height = caps.maxImageExtent.height;
     }
     /* A minimized window (exclusive fullscreen minimizes on Alt+Tab) reports
-     * 0x0 on Windows. Not an error: keep the old swapchain and try again. */
+     * 0x0 on Windows. Not an error: pause and try again each frame. The
+     * swapchain is released meanwhile: kept, it held the screen in exclusive
+     * fullscreen and the last frame stayed in front of the desktop. The
+     * caller has waited for the GPU (vk_swapchain_lost) the first time. */
     if (!ext.width || !ext.height) {
         if (!s_vk.sc_no_area) VK_LOG("window has no drawable area (minimized): presents paused\n");
         s_vk.sc_no_area = 1;
+        if (s_vk.swapchain) {
+            pvkDestroySwapchainKHR(s_vk.device, s_vk.swapchain, NULL);
+            s_vk.swapchain = VK_NULL_HANDLE;
+        }
         return 1;
     }
     if (s_vk.sc_no_area) VK_LOG("window has a drawable area again: presents resumed\n");
@@ -2742,7 +2749,7 @@ static int vk_window_paused(void)
 /* Blit the offscreen target into the next swapchain image and present it. */
 static void vk_present_window(void)
 {
-    if (!s_vk.windowed || !s_vk.swapchain) return;
+    if (!s_vk.windowed) return;
     vk_window_check_resize();
     if (!s_vk.windowed || !s_vk.swapchain || vk_window_paused()) return;
 
@@ -2827,7 +2834,7 @@ static void vk_dump_ppm(const unsigned char* rgba)
  * the GPU behind the frame's batch. Returns 0 when no image was acquired. */
 static int vk_window_record(VkCommandBuffer cb, u32* idx)
 {
-    if (!s_vk.windowed || !s_vk.swapchain) return 0;
+    if (!s_vk.windowed) return 0;
     vk_window_check_resize();
     if (!s_vk.windowed || !s_vk.swapchain || vk_window_paused()) return 0;
     VkResult r = pvkAcquireNextImageKHR(s_vk.device, s_vk.swapchain, UINT64_MAX,
