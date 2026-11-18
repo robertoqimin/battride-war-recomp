@@ -502,8 +502,17 @@ to end on both GPUs.
       stage path in a comment of `loaders.cache` and the link time in
       `graphics-probe.exe`; `packages.json` is identical, so the sources tar
       (`e094364d…`) is kept. `7z t` and `--check` pass.
-- [ ] **Linux: rebuild the AppImage and its sources tar from `90a666c`** on
-      the test laptop, with the November 17 profiles.
+- [x] **Linux rebuilt from `277a041`** (November 18; no shipped file
+      changed after `90a666c`) with the November 17 profiles
+      (`../pgo060/pgo`): `BattrideWarRecomp-v0.6.0-x86_64.AppImage` sha256
+      `7093862d082d31d50dd90d976dc223c29c43164a921fb0481fbae0c9a496fcc5`,
+      `BattrideWarRecomp-v0.6.0-sources.tar` (192 source packages) sha256
+      `981a4a052d4b439da030567e7cc8936d1be93c625d0be648de3c74ba62ee0700`.
+      Against the tested AppImage (`87d2bfac…`, kept in
+      `dist/v0.6.0/superseded-359ab9c/`) only the five docs differ; the
+      sources tar has the same 620 files with the same contents (only the
+      tar's own times changed). `--check` passes; the eight files are in
+      `dist/v0.6.0` and every `.sha256` checks.
 - [ ] GitHub release `v0.6.0` created as a **draft** with the eight files:
       the AppImage, the Linux sources tar, the Windows zip and the Windows
       sources tar, each with its `.sha256`.
