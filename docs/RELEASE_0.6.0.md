@@ -125,7 +125,9 @@ top of `359ab9c`; no shipped file changed):
       exiting`). Session of 7.9 min: 58.0 fps average, 26 frames over
       100 ms, one over 1 s (1,039 ms at 357 s, likely an Alt+Tab: 3
       swapchains created).
-- [ ] The 30-minute session.
+- [x] The 30-minute session, reported by the developer on their own PC
+      (Ryzen 7 5700X, Radeon RX 6750 XT) from the Windows zip: 30-60 min
+      without a crash. The log stayed on that PC; no frame numbers.
 - Left over, to delete by hand: `F:/stage-train`, `F:/stage-train2`,
   `C:/pgo060` (failed attempts).
 
@@ -394,7 +396,7 @@ after every code change above.
 | Window, Alt+Tab and taskbar show **Battride War** | [x] | [x] (Nov 18) |
 | Closing the window ends the game; controller, keyboard and mouse | [x] | [x] (Nov 18) |
 | `bench_combat.py` on both GPUs against 0.5.2 | [x] | [x] (against the old profiles) |
-| 30-minute session without dropouts or stalls | 24 min, none (Nov 17) | [ ] |
+| 30-minute session without dropouts or stalls | 24 min, none (Nov 17) | [x] 30-60 min, no crash (Nov 18, Ryzen 7 5700X + RX 6750 XT, reported) |
 
 **Criterion:** no regression against 0.5.2 on Linux, and Windows working end
 to end on both GPUs.
