@@ -492,6 +492,16 @@ to end on both GPUs.
       **These are shipped files (`PUBLIC_FILES.txt`): both packages must be
       rebuilt from this commit** (the Windows one can reuse `C:/pgo060w/pgo`,
       the AppImage its November 17 profiles).
+- [x] **Windows rebuilt from `90a666c`** (November 18) with `C:/pgo060w/pgo`,
+      stage `F:/final/BattrideWarRecomp`: `BattrideWarRecomp-v0.6.0-windows.zip`
+      sha256 `ddad362071a5a72ca315b43f99e6de54ad8558f62c2a260c5174ac2857e5624e`.
+      Against the tested zip (`a87e0a64…`, kept in
+      `dist/v0.6.0/superseded-c935be7/`) only the five docs differ, plus the
+      stage path in a comment of `loaders.cache` and the link time in
+      `graphics-probe.exe`; `packages.json` is identical, so the sources tar
+      (`e094364d…`) is kept. `7z t` and `--check` pass.
+- [ ] **Linux: rebuild the AppImage and its sources tar from `90a666c`** on
+      the test laptop, with the November 17 profiles.
 - [ ] GitHub release `v0.6.0` created as a **draft** with the eight files:
       the AppImage, the Linux sources tar, the Windows zip and the Windows
       sources tar, each with its `.sha256`.
