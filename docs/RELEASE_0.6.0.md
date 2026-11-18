@@ -29,10 +29,50 @@ are done by the developer on Windows 11, same laptop.
 - [x] The unpushed commits are on the branch `release-0.6.0` (November 16),
       so the Windows side can fetch them; `main` on GitHub is unchanged.
 
+## November 17, 2026: Linux redone from a fresh checkout
+
+The working copy that held `build-pgo11/`, the November 15 AppImage and the
+Windows packages was lost, so both sides start again from `359ab9c` (the tip
+of `release-0.6.0`). **The Windows zip, its sources tar and the training tree
+`C:/pgo060m` are gone: Windows steps 0-7 below must be run again.**
+
+Linux, on the test laptop (CachyOS, Docker instead of podman), all from
+`359ab9c`:
+
+- [x] Inputs: the type2 runtime and `7zz` taken from the 0.5.2 AppImage (both
+      hashes match its `app/package.json`); the 0.5.2 sources tar extracted
+      for `--reuse`.
+- [x] Stage without profiles, then `pgo_tree.py` with the stage's Python and
+      SDK: "mp3: 366 entries translated", so the training ran the codec
+      translated (the open point of step 4 is closed).
+- [x] Training build with the AppImage's GCC 11.4.0 (13 min), `pgo_train.py`
+      on the integrated Radeon (`using device 0`): 2 sessions, 93 profiles,
+      5 minutes in all.
+- [x] `dist/v0.6.0/BattrideWarRecomp-v0.6.0-x86_64.AppImage`, sha256
+      `87d2bfac46cad9b4439c327ef4b7af60441684b0a54ceeeb356ad1ae046298f7`,
+      and `BattrideWarRecomp-v0.6.0-sources.tar` (192 source packages),
+      sha256 `ec4cffc98e3ce6dc72c185df67c378f13fb693db34d31f7dafa07bf38ff8fc32`,
+      each with a `.sha256`. Both contain `5724ff2`, `a820adc` and `0f42e4d`.
+- [x] `--check` passes (21,116 disc files); `--import-only` into an empty
+      `bw-test-0.6.0`: import, translation and build in 12 min, `tools/`
+      removed. Every port and translated file got its profile; the warnings
+      left are 121 missing profiles in SDK headers and 34 mismatches in
+      `main.cpp`, `ppu_hle`, `ppu_sysprx`, `ppu_fs`, `ppu_hle_nids` (cold
+      code, as on Windows).
+- [x] By hand through the launcher (GTX 1650, Automatic): minimize and
+      restore shows the game again (4 swapchains created), closing the window
+      ends the game (`window closed, exiting`), keyboard, mouse and a Switch
+      Pro controller work. Session of 24 min: 59.7 fps average, 15 frames over
+      100 ms, longest 887 ms, none over 1 s; no stall reported.
+- Noted: the launcher prints Fontconfig errors about the host's
+  `48-guessfamily.conf` (the bundled Fontconfig predates the CachyOS
+  config); harmless, like the xkbcommon lines.
+
 ## What is left, in order (November 16, 2026)
 
 Steps 1-4 and 5-6 are done on Linux except for the manual tests. This is the
-rest, in the order to do it; details in steps 4-7 below.
+rest, in the order to do it; details in steps 4-7 below. **Superseded on
+November 17 for Linux (above); the Windows steps must be run again.**
 
 **Windows: steps 0-7 done on November 16** (results in step 4, step 5 and the
 Windows column of step 6), except the tests that need a person at the screen.
@@ -229,7 +269,7 @@ after every code change above.
       | Integrated Radeon: average / worst 5 s / p95 | 47.9 fps / 40.9 / 26.7 ms | 56.5 fps / 48.7 / 21.8 ms |
       | GTX 1650: average / worst 5 s / p95 | 54.0 fps / 43.3 / 24.4 ms | 58.4 fps / 53.3 / 20.6 ms |
 
-- [ ] **`pgo_tree.py` translated the audio task without its MP3 codec**: it
+- [x] **`pgo_tree.py` translated the audio task without its MP3 codec**: it
       did not pass the firmware to `generate.py`, while the importer does
       (`PS3_DEV_FLASH`), so the training ran the codec interpreted while the
       player's game runs it translated. Fixed in `de9b05c` (`--dev-flash`,
@@ -265,8 +305,8 @@ after every code change above.
       `.sha256`. Version `0.6.0-windows`, `--pgo C:/pgo060m/pgo` (the two
       fixes are C files, which PGO does not cover). The zips from `de9b05c`
       (`3abe9aad…`) and `a820adc` (`62364dc3…`) are superseded.
-- [ ] **Linux: rebuild the AppImage and its sources tar from the final
-      commit.** `5724ff2`, `a820adc` and `0f42e4d` changed shipped files after `1e9a6e4`:
+- [x] **Linux: rebuild the AppImage and its sources tar from the final
+      commit.** Done November 17 from `359ab9c` with new profiles (see the top). `5724ff2`, `a820adc` and `0f42e4d` changed shipped files after `1e9a6e4`:
       `port/graphics/vulkan_bridge.c` (shared: a minimized window pauses
       presents and releases its swapchain instead of dropping the window) and `port/audio/audio_bridge.c`
       (Windows-only code). Check on Linux that minimizing the window and
@@ -289,9 +329,9 @@ after every code change above.
 | Interrupted first data installation recovers | [x] | [x] |
 | **Stop** during extraction and build leaves no temporary files | [x] | [x] |
 | Window, Alt+Tab and taskbar show **Battride War** | [x] | window title only |
-| Closing the window ends the game; controller, keyboard and mouse | [ ] | [ ] |
+| Closing the window ends the game; controller, keyboard and mouse | [x] | [ ] |
 | `bench_combat.py` on both GPUs against 0.5.2 | [x] | [x] (against the old profiles) |
-| 30-minute session without dropouts or stalls | [ ] | [ ] |
+| 30-minute session without dropouts or stalls | 24 min, none (Nov 17) | [ ] |
 
 **Criterion:** no regression against 0.5.2 on Linux, and Windows working end
 to end on both GPUs.
