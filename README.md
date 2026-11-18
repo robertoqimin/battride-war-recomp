@@ -26,7 +26,7 @@ What works in the tested parts:
 
 Known issues ([docs/ISSUES.md](docs/ISSUES.md) has the full list, in Portuguese):
 
-- **Frame drops in the most crowded fights.** Ordinary fighting runs at about 55-58 fps, but the heaviest moments drop to about 45 fps: there the game's own command building on its main thread is the limit (see [Performance](#performance)).
+- **Frame drops in the most crowded fights.** Ordinary fighting runs at about 58-60 fps in 0.6.0 on the test laptop, but the heaviest moments drop to about 45 fps: there the game's own command building on its main thread is the limit (see [Performance](#performance)).
 - **Audio** was measured without gaps in the title music and scripted combat, but a manual session still reported breakups during heavy fights, coinciding with frame drops.
 - **One graphics glitch:** a large untextured polygon was seen for a single frame at the start of a special attack and could not be reproduced.
 - **Not validated:** the full game, sessions longer than about 30 minutes, a clean exit on every path, and the ATRAC audio codec.
@@ -37,6 +37,9 @@ Measured on a Ryzen 5 4600H with a GTX 1650 with `scripts/perf/bench_combat.py`:
 
 | Build | Average | p95 frame | Worst 5 seconds |
 |---|---|---|---|
+| AppImage v0.6.0 (three runs) | 59.7 fps | 19.1 ms | 57.9 fps |
+| Windows package v0.6.0 (two runs) | 57.7 fps | 21.3 ms | 52.0 fps |
+| AppImage v0.5.2 (three runs) | 57.0 fps | 21.0 ms | 49.0 fps |
 | AppImage v0.5.0 (bundled GCC 11, optimization profiles) | 55.6 fps (runs of 57.0, 51.9 and 57.9) | 21.2 ms | 46.1 fps |
 | v0.4.x code on the same route | about 48 fps | 24 ms | about 45 fps |
 
@@ -52,6 +55,7 @@ What got it there, from about 6 fps at the start (details in [docs/PERFORMANCE.m
 - The translated code runs from transparent huge pages where the kernel allows them.
 - GCC profile-guided optimization, trained on the opening mission and shipped with the AppImage.
 - In 0.5.0: the busiest threads on physical cores of their own, render targets kept instead of recreated every frame, faster vertex and index processing on the RSX walker, and the guarded fast store for every translated store.
+- In 0.6.0: one compare per inline guest store, optimization profiles that apply in full to the game built on the player's computer (they used to match only part of it), and compiled graphics pipelines kept on disk. On the laptop's integrated Radeon the AppImage's build went from 54.8 to 58.5 fps, worst 5 seconds from 46.3 to 53.9 ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 
 ## System requirements (AppImage)
 

@@ -483,10 +483,15 @@ to end on both GPUs.
 
 ## 7. Publication
 
-- [ ] A report in `docs/reports/` with the measured gain of each item per
+- [x] A report in `docs/reports/` with the measured gain of each item per
       platform; [PERFORMANCE.md](PERFORMANCE.md), [APPIMAGE.md](APPIMAGE.md)
       ("What changed in 0.6.0"), [WINDOWS_PACKAGE.md](WINDOWS_PACKAGE.md) and
-      the README updated with the results.
+      the README updated with the results. Done November 18
+      ([reports/2026-11-18-release-0.6.0.md](reports/2026-11-18-release-0.6.0.md));
+      [WINDOWS.md](WINDOWS.md) also has the `sdl2-compat` and clock notes.
+      **These are shipped files (`PUBLIC_FILES.txt`): both packages must be
+      rebuilt from this commit** (the Windows one can reuse `C:/pgo060w/pgo`,
+      the AppImage its November 17 profiles).
 - [ ] GitHub release `v0.6.0` created as a **draft** with the eight files:
       the AppImage, the Linux sources tar, the Windows zip and the Windows
       sources tar, each with its `.sha256`.

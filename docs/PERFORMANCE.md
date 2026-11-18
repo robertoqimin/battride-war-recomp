@@ -271,3 +271,18 @@ The inline stores of the five fast chunks (`include/port_ppu_memory.h`) checked 
 The game the 0.6.0 AppImage compiled on this machine measured below the same code and profiles built in the training tree: two interleaved pairs, 57.7/58.1 against 58.8/59.1 fps, worst 5 s 50.0/50.8 against 53.6/53.8. The generated chunks and every compile flag were identical. Compiled with warnings on, the player-style chunk 021 reported "source locations ... have changed" for 321 of its 346 functions, and its hot functions came out with another hot/cold split (`func_005C79B4` 0x93e7 bytes against 0x80d6) and `ps3_indirect_call_impl` 10 KB against 1.2 KB: GCC 11 hashes each function's source file name into the line checksum and the profile id that indirect-call promotion matches by. The sysroot and SDK paths turned out not to matter; the port's own paths (source, `-I`, `-include`) did.
 
 PGO builds now run the compiler through `scripts/build/pgo_relpaths.py` (`CXX_COMPILER_LAUNCHER`), which rewrites this tree's paths relative to the build directory, and training uses the importer's layout (`<work>/port` and `<work>/build`, prepared by `scripts/perf/pgo_tree.py`). Chunk 021 compiled in the training tree and in another folder with the placed profiles is then byte-identical, with no coverage warnings; the AppImage's full build reports only `main()` and some SDK sources (the SDK sits under the AppImage's mount point). Three interleaved pairs on the integrated GPU, AppImage build against the training-tree build: 58.7 against 58.5 fps, worst 5 s 54.3 against 54.0, p95 19.4 against 19.7 ms. Earlier releases were trained in the repository and had the same loss.
+
+## Windows profiles in the importer's layout, and the 0.6.0 packages (2026-11-16 to 18)
+
+The Windows profiles (MSYS2 GCC 16.2.0) were trained the same way, in the importer's layout from a package stage (`scripts/perf/pgo_tree.py`), with the MP3 codec translated as in the player's build (`pgo_tree.py` now passes the firmware to `generate.py`; before, training ran the codec interpreted). Built with them the tree reported no missing profile and 2 mismatches; with the previous profiles, trained in the repository, 209 mismatches. Three interleaved pairs per GPU, STG02, 60 s, better in all six: integrated Radeon 56.5 against 47.9 fps, worst 5 s 48.7 against 40.9, p95 21.8 against 26.7 ms; GTX 1650 58.4 against 54.0, 53.3 against 43.3, 20.6 against 24.4 ms. Adopted.
+
+The game each 0.6.0 package built on the test laptop, STG02, 60 s:
+
+| | Integrated Radeon: average / worst 5 s / p95 | GTX 1650: average / worst 5 s / p95 |
+|---|---|---|
+| AppImage 0.5.2 (three runs, interleaved) | 54.8 fps / 46.3 / 23.0 ms | 57.0 fps / 49.0 / 21.0 ms |
+| AppImage 0.6.0 (three runs, interleaved) | 58.5 fps / 53.9 / 19.5 ms | 59.7 fps / 57.9 / 19.1 ms |
+| Windows package of 2026-11-12 (three runs) | 46.3 fps / 38.5 / 27.7 ms | 56.3 fps / 46.4 / 22.5 ms |
+| Windows 0.6.0 package (two runs) | 55.0 fps / 49.7 / 22.8 ms | 57.7 fps / 52.0 / 21.3 ms |
+
+Both packages were rebuilt on 2026-11-17 and 18 with newly trained profiles after the earlier builds were lost; the numbers above are from the rebuilt Windows package and from the AppImage of 2026-11-15 (the rebuilt AppImage adds the minimized-window fix in `vulkan_bridge.c` and Windows-only audio code; it ran a 24-minute session at 59.7 fps on the GTX 1650). Details in [reports/2026-11-18-release-0.6.0.md](reports/2026-11-18-release-0.6.0.md).

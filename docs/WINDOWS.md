@@ -27,6 +27,8 @@ Performance in STG02 fighting, 60 s windows of the scripted route of
 
 | Build | Average | p95 frame | Worst 5 seconds |
 |---|---|---|---|
+| 0.6.0 package, built by `--import-only` (November 18, two runs) | 57.7 fps | 21.3 ms | 52.0 fps |
+| The same, on the integrated Radeon (two runs) | 55.0 fps | 22.8 ms | 49.7 fps |
 | Windows, PGO, built by the launcher from the `--bundle --pgo` package (three runs) | 56.3 fps | 22.5 ms | 46.4 fps |
 | The same, on the integrated AMD Radeon (Vega 6 class) instead of the GTX 1650 (three runs) | 46.3 fps | 27.7 ms | 38.5 fps |
 | Windows, PGO (three runs) | 52.9 fps | 24.2 ms | 45.4 fps |
@@ -43,6 +45,34 @@ Install [MSYS2](https://www.msys2.org) and, in the **MSYS2 UCRT64** shell:
 ```bash
 pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,clang,lld,cmake,ninja,SDL2,vulkan-headers,glslang,spirv-tools,python,pkgconf}
 ```
+
+**SDL2, not sdl2-compat.** Since August 2026 MSYS2 installs `sdl2-compat`
+(SDL2's API on SDL3) for `SDL2`. Its `SDL_config_windows.h` includes
+`sdkddkver.h` before anything sets `_WIN32_WINNT`, which then defaults to
+0x0502, and the SDK's `cellPad.c` fails with "call to undeclared function
+'GetTickCount64'". The release is built and tested with the real SDL2 2.32.8;
+install it from the MSYS2 archive and keep pacman from replacing it:
+
+```bash
+curl -LO https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-SDL2-2.32.8-1-any.pkg.tar.zst
+pacman -Rdd mingw-w64-ucrt-x86_64-sdl2-compat
+pacman -U mingw-w64-ucrt-x86_64-SDL2-2.32.8-1-any.pkg.tar.zst
+# /etc/pacman.conf:  IgnorePkg = mingw-w64-ucrt-x86_64-SDL2
+```
+
+FFmpeg (and whisper.cpp, one of its dependencies) then list a missing
+`mingw-w64-ucrt-x86_64-sdl2` (`pacman -Dk`); they run with the real SDL2.dll.
+`scripts/release/build_windows_package.py` follows those dependency names, so
+for the package change `mingw-w64-ucrt-x86_64-sdl2` to
+`mingw-w64-ucrt-x86_64-SDL2` in their `desc` files under
+`/var/lib/pacman/local/`.
+
+**Clock on a computer that also runs Linux.** If Linux keeps the hardware
+clock in UTC, Windows reads it as local time and runs hours ahead until it
+syncs. Files written before the sync are dated in the future, and a build then
+fails with "manifest 'build.ninja' still dirty after 100 tries": reset their
+times, and set `RealTimeIsUniversal` on Windows or `timedatectl set-local-rtc 1`
+on Linux.
 
 Then follow `docs/BUILD.md` with these differences:
 

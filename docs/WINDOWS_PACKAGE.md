@@ -28,8 +28,9 @@ integrated Radeon). Windows 10, other GPUs and other computers need testing.
    downloads RPCS3 (35 MB, from the RPCS3 project's GitHub release, SHA-256
    verified), extracts and verifies the disc, decrypts the EBOOT and extracts the
    audio codecs, deletes RPCS3, translates the EBOOT, and compiles the game for
-   this CPU. With the profiles, compiling took 21 minutes with 3 jobs on a
-   Ryzen 5 4600H; expect 15-60 minutes. Then the game opens.
+   this CPU. With the profiles, compiling took 19-21 minutes with 3 jobs and
+   about 40 with 2 on a Ryzen 5 4600H; expect 15-60 minutes. Then the game
+   opens.
 4. On its first start the game installs its data (a few minutes, with an
    installation screen). **Let it finish.** If the window is closed during it,
    the launcher removes the half-installed data before the next start and the
@@ -45,9 +46,9 @@ folder, and logs in its `logs` folder (`import.log`, `build.log`, `graphics.log`
 `game.log`).
 
 **Graphics card:** on laptops with two GPUs the game uses the dedicated one.
-Settings, Rendering, Graphics card picks another by name; the integrated Radeon
-of a Ryzen 5 4600H ran the opening mission's fights at about 46 fps, against 56
-on the GTX 1650.
+Settings, Rendering, Graphics card picks another by name; in 0.6.0 the
+integrated Radeon of a Ryzen 5 4600H ran the opening mission's fights at about
+55 fps, against 58 on the GTX 1650.
 
 ## Windows security prompts
 
@@ -74,12 +75,16 @@ the original extracted disc under `game/` and the firmware codecs under
 `firmware/` (only their names, sizes and SHA-256 are recorded):
 
 ```bash
+export LC_ALL=C   # the script reads pacman's English field names
 python scripts/release/build_windows_package.py --stage ../BattrideWarRecomp \
-    --sevenzip-dir "C:/Program Files/7-Zip" --bundle --pgo build-pgo/pgo-win
+    --sevenzip-dir "C:/Program Files/7-Zip" --bundle --pgo C:/pgo060/pgo
 python scripts/release/collect_windows_sources.py --package ../BattrideWarRecomp --out ../BattrideWarRecomp-v0.6.0-windows-sources.tar
 "/c/Program Files/7-Zip/7z.exe" a -tzip -mx=5 BattrideWarRecomp-v0.6.0-windows.zip ../BattrideWarRecomp
 ```
 
-`--pgo` takes profiles from `scripts/perf/pgo_train.py` (see `docs/WINDOWS.md`);
-without it the player's build runs about 25% slower. `--check` instead of
+`--pgo` takes profiles from `scripts/perf/pgo_train.py`, trained in the
+importer's layout from a stage built the same way without `--pgo` (see
+`docs/WINDOWS.md`, "PGO and the benchmark"); without them the player's build
+runs about 25% slower. The real SDL2, not `sdl2-compat`, must be installed
+(`docs/WINDOWS.md`). `--check` instead of
 `--out` asks the servers that every source exists without downloading it.

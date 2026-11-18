@@ -81,6 +81,8 @@ The builder refuses existing stage/output paths. It never bundles libc, the dyna
 
 ## What changed in 0.6.0
 
+- **Faster fights:** in the STG02 benchmark the game the AppImage builds ran 58.5 fps against 54.8 in 0.5.2 on an integrated Radeon (RENOIR), worst 5 seconds 53.9 against 46.3, and 59.7 against 57.0 on a GTX 1650 (worst 5 s 57.9 against 49.0). Guest stores take one compare, and the optimization profiles now apply in full to the player's build: they used to be trained in the repository and only partly matched the AppImage's paths ([PERFORMANCE.md](PERFORMANCE.md)).
+- **Minimized window:** minimizing the game and restoring it shows the game again; while minimized it stops presenting frames.
 - **Graphics card:** Settings, Rendering, **Graphics card** lists the GPUs by name; Automatic still picks the dedicated one. The launcher runs `graphics-probe` once when it opens to list them.
 - **Interrupted first start:** if the game is closed while it installs its data on first start, the launcher removes the half-installed data before the next start and the game installs it again, instead of stopping at the title screen.
 - **Window name:** the game window is titled **Battride War** (it was `ps3recomp`), and its Wayland app_id and X11 class are `battride-recomp`, as the AppImage's desktop file.
