@@ -98,9 +98,34 @@ top of `359ab9c`; no shipped file changed):
       `dist/v0.6.0` and every `.sha256` checks.
 - [x] From the zip extracted to `C:\Games`: `--check` passes with a plain
       Windows `PATH` (21,116 disc files).
-- [ ] Not run (no ISO on this computer): `--import-only` through the package
-      and play; the Windows tests by hand of step 6; `bench_combat.py` (the old
-      profiles are gone, so only against 0.5.2's numbers).
+- [x] `--import-only` from the zip extracted to `C:\Games` into
+      `C:\Games\bwdata`: import (every expected file verified), translation
+      and build with 2 jobs in about 40 min, `tools\` removed. Every port and
+      translated file got its profile; missing profiles only in SDK headers
+      and SDK files, 34 mismatches in `main.cpp`, `ppu_hle`, `ppu_sysprx`,
+      `ppu_fs`, `ppu_hle_nids`, as on November 16.
+- [x] `bench_combat.py --runs 2` on the game the package built, STG02, 60 s:
+      integrated Radeon (device 0) 55.0 fps, worst 5 s 49.7, p95 22.8 ms;
+      GTX 1650 (device 1) 57.7 fps, 52.0, 21.3 ms. November 16's package:
+      57.4 / 50.8 / 21.4 and 58.4 / 53.4 / 20.9; within the ±3 fps spread,
+      the integrated GPU lowest. Windows 0.5.2: 46.3 and 56.3 fps.
+- [x] **The Windows clock went back 3 h** at its NTP sync (19:03): CachyOS
+      keeps the hardware clock in UTC and Windows read it as local time, so
+      every file written before the sync was dated up to 3 h ahead. The
+      launcher's first build then failed with "manifest 'build.ninja' still
+      dirty after 100 tries"; with the future times of the test copy reset to
+      the present, it built. Not a package fault: the zip's file times are
+      3 h ahead, which only matters to a build started before about 22:10 on
+      November 18. To avoid it, `RealTimeIsUniversal` on Windows or
+      `timedatectl set-local-rtc 1` on CachyOS (the developer's choice).
+- [x] By hand through the launcher (default data folder, Automatic chose the
+      GTX 1650, `using device 1`): import, build and first data installation;
+      keyboard, mouse and controller work; Alt+Tab and the taskbar show
+      **Battride War**; closing the window ends the game (`window closed,
+      exiting`). Session of 7.9 min: 58.0 fps average, 26 frames over
+      100 ms, one over 1 s (1,039 ms at 357 s, likely an Alt+Tab: 3
+      swapchains created).
+- [ ] The 30-minute session.
 - Left over, to delete by hand: `F:/stage-train`, `F:/stage-train2`,
   `C:/pgo060` (failed attempts).
 
@@ -366,8 +391,8 @@ after every code change above.
 | GPU list in the launcher; the chosen GPU is used (`using device N`) | [x] | [x] |
 | Interrupted first data installation recovers | [x] | [x] |
 | **Stop** during extraction and build leaves no temporary files | [x] | [x] |
-| Window, Alt+Tab and taskbar show **Battride War** | [x] | window title only |
-| Closing the window ends the game; controller, keyboard and mouse | [x] | [ ] |
+| Window, Alt+Tab and taskbar show **Battride War** | [x] | [x] (Nov 18) |
+| Closing the window ends the game; controller, keyboard and mouse | [x] | [x] (Nov 18) |
 | `bench_combat.py` on both GPUs against 0.5.2 | [x] | [x] (against the old profiles) |
 | 30-minute session without dropouts or stalls | 24 min, none (Nov 17) | [ ] |
 
