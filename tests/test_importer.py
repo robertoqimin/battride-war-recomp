@@ -1,6 +1,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
+import subprocess
 import tempfile
 import unittest
 import threading
@@ -68,8 +70,86 @@ class ImporterTests(unittest.TestCase):
             self.assertIsNone(p.built_runner(data))
             # Same version, changed port sources: rebuild.
             (data/'runner/build.json').write_text(json.dumps(p.build_identity()))
-            (root/'usr/share/battride/port').mkdir(parents=True);(root/'usr/share/battride/port/input_bridge.c').write_text('x')
+            (root/'usr/share/battride/port/port/io').mkdir(parents=True)
+            (root/'usr/share/battride/port/port/io/input_bridge.c').write_text('x')
             self.assertIsNone(m.Package(root).built_runner(data))
+    def make_package(self,root,version='1'):
+        (root/'app').mkdir(exist_ok=True)
+        (root/'app/package.json').write_text(json.dumps({'version':version,'sdk_commit':'s','elf_sha256':'e','codecs':{}}))
+        (root/'app/disc-manifest.json').write_text('{}')
+        port=root/'usr/share/battride/port'
+        for name in ('CMakeLists.txt','README.md','docs/APPIMAGE.md','port/core/main.cpp','include/ppu_vmx.h',
+                     'packaging/launcher.py','packaging/importer.py','tests/test_importer.py','scripts/perf/pgo_train.py',
+                     'scripts/build/generate.py'):
+            (port/name).parent.mkdir(parents=True,exist_ok=True);(port/name).write_text(name)
+        return port
+    def test_identity_ignores_docs_tests_launcher_and_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);port=self.make_package(root)
+            before=m.Package(root).build_identity()
+            for name in ('README.md','docs/APPIMAGE.md','packaging/launcher.py','packaging/importer.py',
+                         'tests/test_importer.py','scripts/perf/pgo_train.py'):
+                (port/name).write_text('changed')
+            (port/'docs/NEW.md').write_text('new')
+            (root/'app/package.json').write_text(json.dumps({'version':'2','sdk_commit':'s','elf_sha256':'e','codecs':{}}))
+            self.assertEqual(m.Package(root).build_identity(),before)
+    def test_identity_follows_build_inputs_profiles_and_toolchain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);port=self.make_package(root)
+            base=m.Package(root).build_identity()
+            for name in ('CMakeLists.txt','port/core/main.cpp','include/ppu_vmx.h','scripts/build/generate.py'):
+                old=(port/name).read_text();(port/name).write_text('changed')
+                self.assertNotEqual(m.Package(root).build_identity()['sources'],base['sources'],name)
+                (port/name).write_text(old)
+            (port/'port/core/new.c').write_text('x')
+            self.assertNotEqual(m.Package(root).build_identity()['sources'],base['sources'])
+            (port/'port/core/new.c').unlink()
+            self.assertEqual(m.Package(root).build_identity(),base)
+            # Profiles: their content, not only whether they exist.
+            pgo=root/'usr/share/battride/pgo';pgo.mkdir(parents=True)
+            (pgo/'profile.json').write_text(json.dumps({'sdk_commit':'s','eboot_sha256':'e'}))
+            (pgo/'a.gcda').write_bytes(b'1');first=m.Package(root).build_identity()['pgo']
+            self.assertTrue(first)
+            (pgo/'a.gcda').write_bytes(b'2')
+            self.assertNotEqual(m.Package(root).build_identity()['pgo'],first)
+            # Toolchain: the bundled package versions.
+            self.assertIsNone(base['toolchain'])
+            (root/'app/build-packages.txt').write_text('gcc-11 11.4.0-1\n');t1=m.Package(root).build_identity()['toolchain']
+            (root/'app/build-packages.txt').write_text('gcc-11 11.4.0-2\n')
+            self.assertNotEqual(m.Package(root).build_identity()['toolchain'],t1)
+    def test_build_inputs_cover_what_the_build_reads(self):
+        # Every repository path CMakeLists.txt names, every one generate.py and
+        # lift_audio_spu.py open below the port root, and every one build_runner()
+        # passes from its copy of the tree must count for the identity.
+        # Generated folders and the SDK are covered by the EBOOT and SDK entries.
+        repo=Path(__file__).resolve().parents[1]
+        generated=('src/','spu/','analysis/','game/','firmware/','tests/')
+        names=set()
+        text=(repo/'CMakeLists.txt').read_text()
+        names.update(re.findall(r'\$\{CMAKE_CURRENT_SOURCE_DIR\}/([A-Za-z0-9_][A-Za-z0-9_./-]*)',text))
+        for script in ('scripts/build/generate.py','scripts/build/lift_audio_spu.py'):
+            names.update(re.findall(r"ROOT\s*/\s*'([^']+)'",(repo/script).read_text()))
+        importer=(repo/'packaging/importer.py').read_text()
+        build_runner=importer[importer.index('def build_runner'):importer.index('\n    def ',importer.index('def build_runner')+1)]
+        names.update(re.findall(r"\bport\s*/\s*'([^']+)'",build_runner))
+        checked=0
+        for name in sorted(names):
+            name=name.rstrip('/')
+            if (name+'/').startswith(generated) or name.startswith('build') or not (repo/name).exists():
+                continue
+            paths=[name] if (repo/name).is_file() else [p.relative_to(repo).as_posix() for p in (repo/name).rglob('*') if p.is_file()]
+            for p in paths:
+                self.assertTrue(m.is_build_input(p),'%s is read by the build but not in BUILD_INPUTS'%p)
+                checked+=1
+        self.assertGreater(checked,10)
+        # Every public file the build reads must ship, or the player's build fails.
+        public=set(l.strip() for l in (repo/'PUBLIC_FILES.txt').read_text().splitlines() if l.strip() and not l.startswith('#'))
+        tracked=subprocess.run(['git','-C',str(repo),'ls-files'],capture_output=True,text=True)
+        if tracked.returncode:
+            self.skipTest('not a git checkout')
+        for p in tracked.stdout.split():
+            if m.is_build_input(p):
+                self.assertIn(p,public,'%s is a build input but does not ship'%p)
     def test_wrong_local_rpcs3_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'app').mkdir()

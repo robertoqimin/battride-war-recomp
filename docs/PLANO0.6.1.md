@@ -605,6 +605,18 @@ recompilar por 15 a 60 minutos.
 
 ### U1: identidade só com o que afeta o binário (horas)
 
+> **Feito em 19/11** (`packaging/importer.py`, `BUILD_RECIPE` 4). A identidade passou a ter `sources` (só os
+> `BUILD_INPUTS`: `CMakeLists.txt`, `recompile.json`, `app.rc`, `include/`, `port/`, `shaders/`, `third_party/`,
+> `scripts/build/`, `patches/ps3recomp/` e `packaging/linux/glslang-compat/`), `toolchain` (hash do
+> `app/build-packages.txt` no Linux ou do `usr/toolchain/packages.json` no Windows), `game_libs` e `pgo` (hash dos
+> perfis, não só se existem); a versão do pacote saiu. A lista fica no `importer.py`, que os dois pacotes usam, em vez
+> de uma marca no `PUBLIC_FILES.txt`. Ao revisar apareceram dois buracos que a versão escondia: perfis retreinados e um
+> toolchain novo não recompilariam o jogo; agora recompilam. Testes novos no `tests/test_importer.py`: docs, testes,
+> launcher, importer e versão não mudam a identidade; `port/`, `include/`, `CMakeLists.txt`, `generate.py`, perfis e
+> toolchain mudam; e todo caminho que o `CMakeLists.txt`, o `generate.py`, o `lift_audio_spu.py` e o
+> `build_runner()` leem está nos `BUILD_INPUTS` (conferido tirando `include/` e `glslang-compat/` da lista: o teste
+> falha nos dois). Falta a validação com pacotes reais (U5).
+
 1. Trocar o `sources_sha256()` por uma lista explícita do que o CMake e o `generate.py` leem: `CMakeLists.txt`,
    `CMakePresets.json`, `recompile.json`, `config.toml`, `port/`, `include/`, `shaders/`, `third_party/`,
    `scripts/build/` e `patches/ps3recomp/`.
@@ -646,6 +658,10 @@ recompilar por 15 a 60 minutos.
     apagado, o build volta a ser completo e o resultado é o mesmo.
 
 ### U4: política dos perfis de PGO
+
+> **Script feito em 19/11:** `scripts/release/compare_profiles.py <anterior> <novo>` aceita a pasta dos perfis, um
+> stage ou um AppImage extraído, e sai com 1 e a lista dos arquivos quando os perfis mudam. Rode antes de cada
+> release; a regra abaixo continua valendo.
 
 13. Com `-fprofile-use`, o ccache inclui o perfil no hash. Se os perfis forem retreinados a cada versão, os 84
     chunks PPU (a maior parte do tempo) recompilam sempre.

@@ -78,8 +78,31 @@ def download(url, dest, expected_sha256, expected_size, cancelled, status=lambda
         raise ImportError('The downloaded RPCS3 file does not match the expected build; it was deleted.')
 
 
-# Bump when the local build recipe changes, so existing runners are rebuilt.
-BUILD_RECIPE = 3
+# Bump when the local build recipe changes, so existing runners are rebuilt:
+# the configure options or steps in build_runner(), or what build_identity() records.
+BUILD_RECIPE = 4
+# The files of the port tree the game build reads (CMake, generate.py and the
+# sources they compile), as paths relative to the tree; a trailing '/' takes a
+# whole directory. Only these decide whether the game is rebuilt: docs, tests,
+# the launcher and the package version do not. tests/test_importer.py checks
+# that every file CMakeLists.txt and generate.py name is covered.
+BUILD_INPUTS = ('CMakeLists.txt', 'recompile.json', 'app.rc', 'include/', 'port/', 'shaders/', 'third_party/',
+                'scripts/build/', 'patches/ps3recomp/', 'packaging/linux/glslang-compat/')
+
+
+def is_build_input(name):
+    """name: a path relative to the port tree, with '/' separators."""
+    return any(name.startswith(i) if i.endswith('/') else name == i for i in BUILD_INPUTS)
+
+
+def tree_sha256(root, names):
+    """SHA-256 over the given files below root (relative names and contents), in a stable order."""
+    h = hashlib.sha256()
+    for name in sorted(names):
+        h.update(name.encode() + b'\0' + (root / name).read_bytes() + b'\0')
+    return h.hexdigest()
+
+
 # Peak memory of one compiler job on the largest generated PPU chunk, rounded up.
 BUILD_JOB_MEMORY = 2 * 1024**3
 
@@ -654,20 +677,37 @@ class Package:
         return path
 
     def sources_sha256(self):
-        """The port sources this AppImage builds, so a rebuilt AppImage of the same version rebuilds the game."""
+        """The port files the game build reads (BUILD_INPUTS), so a change to any of them rebuilds the game
+        and a change to anything else (docs, tests, the launcher) does not."""
         if not hasattr(self, '_sources_sha256'):
-            h = hashlib.sha256()
             port = self.root / 'usr/share/battride/port'
-            for f in sorted(p for p in port.rglob('*') if p.is_file()) if port.is_dir() else ():
-                # as_posix: the same hash from MSYS2's Python ('/') and Windows' ('\').
-                h.update(f.relative_to(port).as_posix().encode() + b'\0' + f.read_bytes() + b'\0')
-            self._sources_sha256 = h.hexdigest()
+            # as_posix: the same names from MSYS2's Python ('/') and Windows' ('\').
+            names = [p.relative_to(port).as_posix() for p in port.rglob('*') if p.is_file()] if port.is_dir() else []
+            self._sources_sha256 = tree_sha256(port, [n for n in names if is_build_input(n)])
         return self._sources_sha256
 
+    def profiles_sha256(self):
+        """The shipped GCC profiles that apply, or None: retrained profiles rebuild the game, the same files
+        shipped again do not."""
+        path = self.profiles()
+        if path is None:
+            return None
+        return tree_sha256(path, [p.relative_to(path).as_posix() for p in path.rglob('*') if p.is_file()])
+
+    def toolchain_sha256(self):
+        """The bundled compilers and libraries the game is built and run with: the build image's package
+        versions on Linux (app/build-packages.txt, also the source of game_libs), the MSYS2 package list
+        on Windows (usr/toolchain/packages.json). None when the package has no such list."""
+        for name in ('usr/toolchain/packages.json', 'app/build-packages.txt'):
+            if (self.root / name).is_file():
+                return tree_sha256(self.root, [name])
+        return None
+
     def build_identity(self):
-        return {'recipe': BUILD_RECIPE, 'package': self.meta['version'], 'sdk': self.meta['sdk_commit'],
-                'elf_sha256': self.meta['elf_sha256'], 'sources': self.sources_sha256(), 'cpu': cpu_identity(),
-                'pgo': self.profiles() is not None}
+        # No package version: a release that changes none of these keeps the game the player built.
+        return {'recipe': BUILD_RECIPE, 'sdk': self.meta['sdk_commit'], 'elf_sha256': self.meta['elf_sha256'],
+                'sources': self.sources_sha256(), 'toolchain': self.toolchain_sha256(),
+                'game_libs': self.meta.get('game_libs', []), 'cpu': cpu_identity(), 'pgo': self.profiles_sha256()}
 
     def built_runner(self, data):
         """The game built on this computer, or None when it must be (re)built."""

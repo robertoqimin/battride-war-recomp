@@ -70,6 +70,7 @@ scripts/release/build_appimage.py
 scripts/release/build_windows_package.py
 scripts/release/collect_sources.py
 scripts/release/collect_windows_sources.py
+scripts/release/compare_profiles.py
 scripts/run-vulkan.sh
 shaders/fsr1.comp
 tests/test_frame_report.py

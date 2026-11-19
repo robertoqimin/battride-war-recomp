@@ -38,7 +38,7 @@ the player builds does not change.
   place. `[InstallDelete]` empties the package folder first: the package has
   thousands of files and a stale one from an older MSYS2 could be loaded.
   The data folder and the built game are untouched; the launcher rebuilds
-  once when the version changes, as today.
+  once only when the build inputs change (`build_identity()`, U1 in `PLANO0.6.1.md`).
 - **Uninstall:** removes the package folder and shortcuts, and asks whether
   to delete the data folder too, **No** by default (it holds saves).
 - **Keep the zip** as the portable option beside the installer.
