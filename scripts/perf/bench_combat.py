@@ -11,6 +11,8 @@ and the CPU time of each thread. Runs are reported one by one and together:
   >16.7 / >33 ms frames that missed 60 / 30 fps
   1% low         fps from the slowest 1% of frames
   worst 5 s      lowest fps over any 5-second span
+  busy ms        mean frame interval without the game's frame limiter wait (0.6.1+); its
+                 p95, and potential fps = 1000 / busy ms: what the build could reach uncapped
   threads        busiest threads, % of one CPU, over the window
 
 usage: bench_combat.py --binary <game executable> [--runs 3] [--seconds 60]
@@ -23,6 +25,7 @@ PATH. There is no /proc there: no per-thread CPU, --pin or --stacks.
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -153,7 +156,9 @@ def run_once(binary, seconds, extra_env, work, stacks=0, pin=0, prefix=(), dump=
                 proc.wait()
     # Frame log times are from the game's own start; the window is the last
     # `seconds` of what it wrote before the kill.
-    rows = [line.split(',') for line in frames.read_text().splitlines()[1:] if line.count(',') == 2]
+    # frame,elapsed_ms,interval_ms[,limiter_wait_ms,busy_ms]: busy_ms since 0.6.1.
+    rows = [line.split(',') for line in frames.read_text().splitlines()[1:] if line.count(',') in (2, 4)]
+    busy_by_frame = {int(r[0]): float(r[4]) for r in rows if len(r) == 5}
     elapsed = [float(r[1]) for r in rows]
     end = elapsed[-1]
     window = [(int(r[0]), float(r[1]), float(r[2])) for r in rows if float(r[1]) >= end - seconds * 1000.0]
@@ -170,7 +175,8 @@ def run_once(binary, seconds, extra_env, work, stacks=0, pin=0, prefix=(), dump=
             paused[i:j] = [True] * (j - i)
         i = j
     first_line = (window[0][0] - 1) // 30 if window else 0
-    window = [(t, i, (f - 1) // 30 < len(paused) and paused[(f - 1) // 30]) for f, t, i in window]
+    window = [(t, i, (f - 1) // 30 < len(paused) and paused[(f - 1) // 30], busy_by_frame.get(f, math.nan))
+              for f, t, i in window]
     draws = [d for k, d in enumerate(all_draws[first_line:], first_line) if not paused[k]]
     # Guest PPU threads log their host thread id; name them after the guest's.
     text = log_path.read_text(errors='replace')
@@ -236,10 +242,12 @@ def stack_summary(samples, names):
 
 
 def summarise(window):
-    """Statistics over the frames of `window` [(time, interval, paused)] that
-    were not a paused screen; paused_s is how long the rest lasted."""
-    moving = [(t, i) for t, i, p in window if not p]
-    paused_s = sum(i for _, i, p in window if p) / 1000.0
+    """Statistics over the frames of `window` [(time, interval, paused, busy_ms)] that
+    were not a paused screen; paused_s is how long the rest lasted. busy_ms is the
+    interval without the game's frame limiter wait (nan for builds before 0.6.1)."""
+    moving = [(t, i) for t, i, p, _ in window if not p]
+    busy = sorted(b for _, i, p, b in window if not p and i > 0 and math.isfinite(b))
+    paused_s = sum(i for _, i, p, _ in window if p) / 1000.0
     if len(moving) < 60:
         raise RuntimeError('the fight stayed paused for the whole window')
     intervals = sorted(i for _, i in moving if i > 0)
@@ -247,7 +255,7 @@ def summarise(window):
     # The worst 5 s within each stretch of uninterrupted fighting, so that a
     # removed pause does not count as missing frames.
     segments, cur = [], []
-    for t, i, p in window:
+    for t, i, p, _ in window:
         if p:
             if cur: segments.append(cur)
             cur = []
@@ -262,7 +270,12 @@ def summarise(window):
             'p95_ms': round(intervals[int(n * .95)], 1), 'p99_ms': round(intervals[int(n * .99)], 1),
             'over_16_7': sum(i > 16.7 for i in intervals), 'over_33': sum(i > 33.4 for i in intervals),
             'low1_fps': round(1000.0 / statistics.mean(slow), 1),
-            'worst5_fps': round(min(worst5), 1) if worst5 else 0.0}
+            'worst5_fps': round(min(worst5), 1) if worst5 else 0.0,
+            # The frames' own work, without the limiter: what this build could reach.
+            'busy_ms': round(statistics.mean(busy), 2) if busy else math.nan,
+            'busy_p95_ms': round(busy[int(len(busy) * .95)], 2) if busy else math.nan,
+            'busy_p99_ms': round(busy[int(len(busy) * .99)], 2) if busy else math.nan,
+            'potential_fps': round(1000.0 / statistics.mean(busy), 1) if busy and statistics.mean(busy) > 0 else math.nan}
 
 
 def main():
@@ -312,11 +325,14 @@ def main():
         if stacks:
             s['stacks'] = {k: stacks[k.rsplit('/', 1)[1]] for k in s['threads'] if k.rsplit('/', 1)[1] in stacks}
         results.append(s)
-        print('run %d: %.1f fps, p95 %.1f ms, >16.7 ms %d, >33 ms %d, 1%% low %.1f, worst 5 s %.1f, paused %.1f s, draws %s | %s' % (
-            n + 1, s['avg_fps'], s['p95_ms'], s['over_16_7'], s['over_33'], s['low1_fps'], s['worst5_fps'], s['paused_s'],
+        print('run %d: %.1f fps, p95 %.1f ms, >16.7 ms %d, >33 ms %d, 1%% low %.1f, worst 5 s %.1f, busy %.2f ms '
+              '(p95 %.2f, potential %.1f fps), paused %.1f s, draws %s | %s' % (
+            n + 1, s['avg_fps'], s['p95_ms'], s['over_16_7'], s['over_33'], s['low1_fps'], s['worst5_fps'],
+            s['busy_ms'], s['busy_p95_ms'], s['potential_fps'], s['paused_s'],
             '%(min)d-%(max)d' % s['draws'] if s['draws'] else '?',
             ', '.join('%s %.0f%%' % kv for kv in list(s['threads'].items())[:4])), flush=True)
-    keys = ('avg_fps', 'p95_ms', 'p99_ms', 'over_16_7', 'over_33', 'low1_fps', 'worst5_fps', 'paused_s')
+    keys = ('avg_fps', 'p95_ms', 'p99_ms', 'over_16_7', 'over_33', 'low1_fps', 'worst5_fps', 'busy_ms',
+            'busy_p95_ms', 'busy_p99_ms', 'potential_fps', 'paused_s')
     mean = {k: round(statistics.mean(r[k] for r in results), 1) for k in keys}
     print('mean: ' + ', '.join('%s %s' % kv for kv in mean.items()))
     if args.json:

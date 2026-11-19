@@ -19,6 +19,7 @@ docs/REQUIREMENTS.md
 docs/SAIL.md
 docs/WINDOWS.md
 docs/WINDOWS_PACKAGE.md
+include/port_frame_limiter.h
 include/port_ppu_memory.h
 include/port_ppu_native.h
 include/port_ppu_store_gate.h
@@ -37,6 +38,7 @@ port/audio/audio_bridge.c
 port/audio/sail_audio.hpp
 port/audio/sail_bridge.cpp
 port/audio/sail_decoder.hpp
+port/core/frame_limiter.cpp
 port/core/loader_bridge.cpp
 port/core/main.cpp
 port/core/ppu_native.cpp

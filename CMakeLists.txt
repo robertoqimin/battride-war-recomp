@@ -555,6 +555,26 @@ if(PORT_PPU_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 
         message(STATUS "Native PPU:      off (func_004B5120 not in chunk ${PORT_PPU_NATIVE_CHUNK})")
     endif()
 endif()
+# The game's frame limiter, timed: busy_ms in PORT_FRAME_TIMES is the frame
+# interval without the limiter's wait (port/core/frame_limiter.cpp). Same
+# weak-definition mechanism as the native replacements above.
+option(PORT_FRAME_LIMITER_WRAP "Time the game's frame limiter (busy_ms in PORT_FRAME_TIMES)" ON)
+set(PORT_FRAME_LIMITER_CHUNK "013" CACHE STRING "Generated PPU chunk defining func_003ABE20")
+if(PORT_FRAME_LIMITER_WRAP AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW))
+    set(source "${RECOMP_DIR}/ppu_recomp_${PORT_FRAME_LIMITER_CHUNK}.cpp")
+    set(limiter_defined "")
+    if(EXISTS "${source}")
+        file(STRINGS "${source}" limiter_defined REGEX "^void func_003ABE20\\(ppu_context\\* ctx\\) {")
+    endif()
+    if(limiter_defined)
+        set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS
+            "-include" "${CMAKE_CURRENT_SOURCE_DIR}/include/port_frame_limiter.h")
+        target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/frame_limiter.cpp")
+        message(STATUS "Frame limiter:   timed (func_003ABE20, chunk ${PORT_FRAME_LIMITER_CHUNK})")
+    else()
+        message(STATUS "Frame limiter:   not timed (func_003ABE20 not in chunk ${PORT_FRAME_LIMITER_CHUNK})")
+    endif()
+endif()
 # The same fast path for every other translated store, out of line: the
 # linker sends the chunks' vm_write8/16/32/64 calls to store_wrap.c.
 option(PORT_PPU_WRAP_STORES "Route translated stores through the fast path in store_wrap.c" ON)

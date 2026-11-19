@@ -22,6 +22,17 @@ class FrameReportTests(unittest.TestCase):
         self.assertEqual(report.summarize(self.csv, .01, .06)['frames'], 2)
         self.assertEqual(report.summarize(self.csv, .011, .06)['frames'], 1)
 
+    def test_busy_columns(self):
+        self.csv.write_text('frame,elapsed_ms,interval_ms,limiter_wait_ms,busy_ms\n'
+                            '1,0,0,0,0\n2,16,16,6,10\n3,32,16,4,12\n4,48,16,nan,nan\n')
+        x = report.summarize(self.csv)
+        self.assertEqual(x['frames'], 3)
+        self.assertEqual((x['busy_mean_ms'], x['busy_p95_ms']), (11, 12))
+        self.assertAlmostEqual(x['potential_fps'], 1000 / 11)
+
+    def test_old_logs_have_no_busy_figures(self):
+        self.assertNotIn('busy_mean_ms', report.summarize(self.csv))
+
     def test_empty_window(self):
         with self.assertRaises(ValueError):
             report.summarize(self.csv, 1, 2)

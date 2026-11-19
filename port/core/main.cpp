@@ -39,6 +39,7 @@
 #include "win32_compat.h"
 
 #include <chrono>
+#include <math.h>   /* NAN: busy_ms without the limiter wrapper */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -196,6 +197,10 @@ extern "C" unsigned ppu_boot_frames_presented(void)
     return (unsigned)g_frames_presented;
 }
 
+/* port/core/frame_limiter.cpp, when the build wraps the game's frame limiter
+ * (PORT_FRAME_LIMITER_WRAP); weak, so a build without it still links. */
+extern "C" double port_frame_limiter_take_wait_ms(void) __attribute__((weak));
+
 static void present_guest_frame(void)
 {
     rsx_backend_present();
@@ -208,7 +213,12 @@ static void present_guest_frame(void)
         const char* path = getenv("PORT_FRAME_TIMES");
         if (!path || !*path) return nullptr;
         FILE* f = fopen(path, "w");
-        if (f) { setvbuf(f, nullptr, _IOFBF, 65536); fprintf(f, "frame,elapsed_ms,interval_ms\n"); }
+        if (f) {
+            setvbuf(f, nullptr, _IOFBF, 65536);
+            /* limiter_wait_ms: time in the game's frame limiter since the previous
+             * frame; busy_ms = interval - that, the frame's work (nan without the wrapper). */
+            fprintf(f, "frame,elapsed_ms,interval_ms,limiter_wait_ms,busy_ms\n");
+        }
         return f;
     }();
     if (timings) {
@@ -220,7 +230,10 @@ static void present_guest_frame(void)
         const double elapsed = std::chrono::duration<double, std::milli>(now-start).count();
         const double interval = have_last ? std::chrono::duration<double, std::milli>(now-last).count() : 0.0;
         have_last = true;
-        fprintf(timings, "%u,%.6f,%.6f\n", ppu_boot_frames_presented(), elapsed, interval);
+        const double wait = port_frame_limiter_take_wait_ms ? port_frame_limiter_take_wait_ms() : NAN;
+        const double busy = interval > wait ? interval - wait : 0.0;
+        fprintf(timings, "%u,%.6f,%.6f,%.6f,%.6f\n", ppu_boot_frames_presented(), elapsed, interval,
+                wait, port_frame_limiter_take_wait_ms ? busy : NAN);
         last = now;
         if (ppu_boot_frames_presented() % 60u == 0) fflush(timings);
     }

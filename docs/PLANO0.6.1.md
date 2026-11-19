@@ -143,6 +143,18 @@ que o combate usa dt.
 
 ### F1: métrica de folga, sem mudar o jogo (cerca de 1 dia)
 
+> **Feito em 19/11.** `include/port_frame_limiter.h` (forçado no chunk 013, como o `port_ppu_native.h`) torna o
+> `func_003ABE20` traduzido fraco, e `port/core/frame_limiter.cpp` o chama medindo a espera. O `PORT_FRAME_TIMES` ganhou
+> as colunas `limiter_wait_ms` e `busy_ms`; o `frame_report.py` e o `bench_combat.py` mostram média, p95 e p99 do
+> `busy_ms` e o fps potencial (logs antigos continuam aceitos). Opção do CMake `PORT_FRAME_LIMITER_WRAP` (ligada).
+> Medido na Radeon integrada, STG02: na luta, intervalo 19,59 ms, espera 1,23 ms, **busy 18,38 ms**, fps potencial
+> 52,9 (50,7 medido); nos menus, travados em 60, intervalo 16,61 ms, espera 15,22 ms, busy 1,60 ms.
+> **A validação do item 4 com `PORT_FPS_LIMIT` não serve:** esse limite é do port (dorme no present, na thread do
+> relógio de frames), não do jogo. Sem descontá-lo, o busy vira o intervalo (33,3 ms a 30 fps); descontando o sono,
+> cai demais (12,8 ms a 30 fps), porque a thread do jogo continua trabalhando enquanto o relógio dorme. O `busy_ms`
+> desconta só o limitador do jogo; com `PORT_FPS_LIMIT` ele não tem sentido. A validação foi feita nos trechos em
+> que o próprio jogo trava em 60 (acima).
+
 1. Um wrapper de `func_003ABE20` com o mesmo mecanismo do `ppu_native.cpp` (símbolo fraco). Ele chama o lifted e
    mede quanto tempo ficou dentro.
 2. Calcular por frame: `busy_ms = intervalo − espera no limitador`, e daí `fps potencial = 1000 / busy_ms`.
