@@ -5,7 +5,7 @@
 Repositório alvo: [robertoqimin/battride-war-recomp](https://github.com/robertoqimin/battride-war-recomp) (partindo da v0.6.0, SDK `sp00nznet/ps3recomp@a6d76c8`).
 Referência: [SamiEnazi/infamous2-port](https://github.com/SamiEnazi/infamous2-port) (v0.6.3).
 
-Este documento junta sete coisas:
+Este documento junta oito coisas:
 
 1. Como o port do inFAMOUS 2 funciona, como referência.
 2. O que trazer dele para o Battride: otimizações do lifter PPU e melhorias gráficas.
@@ -16,6 +16,7 @@ Este documento junta sete coisas:
 6. As atualizações que hoje recompilam o jogo inteiro, de 15 a 60 minutos, mesmo quando só a documentação mudou, e
    por que a primeira compilação não pode sumir.
 7. O tamanho dos pacotes: 707 MB no Windows e 235 MB no AppImage, contra cerca de 50 MB no infamous2.
+8. A interface do launcher: as páginas passam das abas para uma sidebar à esquerda.
 
 No fim há uma ordem única de execução.
 
@@ -38,7 +39,8 @@ No fim há uma ordem única de execução.
 - [Parte 9: instalação no Windows (W1 a W4)](#parte-9-instalação-no-windows-w1-a-w4)
 - [Parte 10: atualizações sem recompilar tudo (U1 a U6)](#parte-10-atualizações-sem-recompilar-tudo-u1-a-u6)
 - [Parte 11: tamanho dos pacotes (S1 a S3)](#parte-11-tamanho-dos-pacotes-s1-a-s3)
-- [Parte 12: ordem única de execução](#parte-12-ordem-única-de-execução)
+- [Parte 12: interface do launcher (L1)](#parte-12-interface-do-launcher-l1)
+- [Parte 13: ordem única de execução](#parte-13-ordem-única-de-execução)
 
 ---
 
@@ -798,7 +800,49 @@ Esses números são estimativas: nada foi medido no pacote do Battride.
 
 ---
 
-## Parte 12: ordem única de execução
+## Parte 12: interface do launcher (L1)
+
+### Como está na v0.6.0 (`packaging/launcher.py`)
+
+As cinco páginas (Game, Settings, Keyboard, Controller e Log) ficam num `Adw.ViewStack`. A troca entre elas é feita
+por abas no cabeçalho (`Adw.ViewSwitcherTitle`) e, quando a janela fica estreita, por uma barra embaixo
+(`Adw.ViewSwitcherBar`). O botão **Install & Play** e o de créditos ficam no cabeçalho, e a barra de progresso com a
+última mensagem fica embaixo de todas as páginas.
+
+### L1: páginas numa sidebar à esquerda (cerca de 1 dia)
+
+Trocar as abas por uma **sidebar fixa à esquerda**, com ícone e nome de cada página, e o conteúdo da página à direita.
+
+1. **Widgets compatíveis com o libadwaita 1.1**, o mínimo do AppImage (Ubuntu 22.04). O `Adw.NavigationSplitView` e
+   o `Adw.OverlaySplitView` só existem a partir do 1.4, então não servem. Use:
+   - um `Gtk.Stack` no lugar do `Adw.ViewStack`;
+   - à esquerda, um `Gtk.ListBox` com a classe de estilo `navigation-sidebar`, uma linha por página (ícone e nome,
+     os mesmos de hoje); ou o `Gtk.StackSidebar` do GTK 4.0, se o visual dele bastar;
+   - os dois lados dentro de um `Adw.Leaflet` (existe desde o 1.0), que mostra só a página e um botão de voltar
+     quando a janela fica estreita.
+2. **O cabeçalho** perde as abas e mostra o nome da página aberta. **Install & Play** e o botão de créditos ficam
+   onde estão. A barra de progresso continua embaixo do conteúdo, visível em qualquer página.
+3. **A página Log** pode mostrar na sidebar um indicador (um ponto ou um contador) quando chega um erro enquanto o
+   jogador está em outra página.
+4. **Manter o que já existe:** a opção `--page` (usada pelos screenshots de teste), a página inicial `game` e a página
+   aberta lembrada nas configurações, se for o caso.
+5. **Tamanho da janela:** hoje 880 × 780. Com uma sidebar de cerca de 200 px, conferir se as páginas Settings e
+   Keyboard cabem sem rolagem horizontal; aumentar a largura padrão se precisar.
+6. **Windows:** o pacote usa o GTK e o libadwaita do MSYS2, que são mais novos, então o mesmo código serve. Se a S1.4
+   (launcher leve no Windows, sem GTK) for adotada, a nova interface precisa repetir a sidebar. Decida a S1.4 antes
+   de começar a L1, para não fazer a interface duas vezes.
+
+### Validar
+
+- As cinco páginas abrem pela sidebar e pela opção `--page`, no AppImage e no pacote Windows.
+- Janela estreita: a sidebar recolhe e o botão de voltar aparece.
+- Tema claro e escuro; teclado (Tab e setas) navega pela sidebar.
+- Durante uma importação ou um build, trocar de página não interrompe a barra de progresso nem o log.
+- Screenshots novos para o README e o `docs/APPIMAGE.md`.
+
+---
+
+## Parte 13: ordem única de execução
 
 | # | Fase | Ganho esperado | Esforço |
 |---|---|---|---|
@@ -869,3 +913,11 @@ pequena. A U-a e a U-b vêm primeiro: são as mais baratas e já evitam o rebuil
 | S-e | **S1.5 a S1.7**: limpeza, compressão e validação | o resto | 1–2 dias |
 | S-f | **S2**: download sob demanda | o download das atualizações | cerca de 1 semana |
 | S-g | **S3**: engine pronta mais módulo do jogo | o toolchain completo no pacote | semanas, depois das fases 1 a 3 e da M3 |
+
+**A trilha do launcher** mexe só no `packaging/launcher.py` e entra **na 0.6.1** (pedido em 19/11). Ela depende
+da decisão sobre a S1.4: se o launcher do Windows deixar de usar GTK, a sidebar precisa ser feita nas duas
+interfaces.
+
+| # | Item | Resolve | Esforço |
+|---|---|---|---|
+| L-a | **L1**: páginas numa sidebar à esquerda | navegação entre Game, Settings, Keyboard, Controller e Log | cerca de 1 dia |
