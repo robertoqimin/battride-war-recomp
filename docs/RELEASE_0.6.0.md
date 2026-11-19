@@ -522,7 +522,11 @@ to end on both GPUs.
       joins them back to `e094364d…`) beside the whole tar's `.sha256`; the
       release notes say how. Nine assets in all; every GitHub digest matches
       the local file.
-- [ ] Published only when both sides are complete and tested.
+- [x] Published only when both sides are complete and tested. Published
+      November 18 (21:08 local), marked latest:
+      https://github.com/robertoqimin/battride-war-recomp/releases/tag/v0.6.0.
+      A Windows installer (`.exe`) was asked for during the review; it is
+      planned for 0.6.1 ([ROADMAP.md](ROADMAP.md), "Windows installer").
 - [ ] Test folders removed.
 
 ## Estimated time
