@@ -68,6 +68,42 @@ Linux, on the test laptop (CachyOS, Docker instead of podman), all from
   `48-guessfamily.conf` (the bundled Fontconfig predates the CachyOS
   config); harmless, like the xkbcommon lines.
 
+## November 18, 2026: Windows redone from the same commit
+
+Windows 11, same laptop, fresh MSYS2 (GCC 16.2.0, clang 23.1.5, CMake 4.5.0)
+and 7-Zip 26.06 installed with winget, all from `51f7a74` (the docs commit on
+top of `359ab9c`; no shipped file changed):
+
+- [x] **MSYS2 now installs `sdl2-compat` (SDL2 on SDL3) as `SDL2`.** Its
+      `SDL_config_windows.h` includes `sdkddkver.h` before `_mingw.h`, which
+      sets `_WIN32_WINNT` to 0x0502, so `GetTickCount64` is undeclared in the
+      SDK's `cellPad.c` and the build fails. Instead of a code change (which
+      would mean rebuilding the AppImage), the real `SDL2 2.32.8-1` (the one
+      the November 16 package carried) was installed from the MSYS2 archive and
+      pinned (`IgnorePkg` in `/etc/pacman.conf`); in the local pacman database,
+      `ffmpeg` and `whisper.cpp` depend on `SDL2` instead of `sdl2` (originals
+      kept as `desc.orig-sdl2compat`). The bundled FFmpeg runs with it. The
+      package has 175 MSYS2 packages (SDL3 left).
+- [x] `pacman -Qi` prints localized fields: run `build_windows_package.py`
+      with `LC_ALL=C` on a non-English Windows.
+- [x] Stage `F:/stage-train3`, training tree `C:/pgo060w` ("mp3: 366 entries
+      translated"), training build 37 min with 2 jobs, `pgo_train.py`: 2
+      sessions, 93 profiles for GCC 16.2.0 in 6 min.
+- [x] `dist/v0.6.0/BattrideWarRecomp-v0.6.0-windows.zip` (708 MB, sha256
+      `a87e0a64a28cb0a4c88c4f67bbe983788b8e27bbf209ecee5e052b32b2bbcc38`) with
+      `--pgo C:/pgo060w/pgo`, and `BattrideWarRecomp-v0.6.0-windows-sources.tar`
+      (2.29 GB, 165 source archives and `SOURCES.md`, sha256
+      `e094364d2801b4c2e2da2bc089b038000707bf66e44c3099d38ec87fcd8df0c4`), each
+      with a `.sha256`. `7z t` passes; the eight files of step 7 are all in
+      `dist/v0.6.0` and every `.sha256` checks.
+- [x] From the zip extracted to `C:\Games`: `--check` passes with a plain
+      Windows `PATH` (21,116 disc files).
+- [ ] Not run (no ISO on this computer): `--import-only` through the package
+      and play; the Windows tests by hand of step 6; `bench_combat.py` (the old
+      profiles are gone, so only against 0.5.2's numbers).
+- Left over, to delete by hand: `F:/stage-train`, `F:/stage-train2`,
+  `C:/pgo060` (failed attempts).
+
 ## What is left, in order (November 16, 2026)
 
 Steps 1-4 and 5-6 are done on Linux except for the manual tests. This is the
@@ -304,7 +340,9 @@ after every code change above.
       bundled MSYS2 packages did not change, so it was kept), each with a
       `.sha256`. Version `0.6.0-windows`, `--pgo C:/pgo060m/pgo` (the two
       fixes are C files, which PGO does not cover). The zips from `de9b05c`
-      (`3abe9aad…`) and `a820adc` (`62364dc3…`) are superseded.
+      (`3abe9aad…`) and `a820adc` (`62364dc3…`) are superseded. **Lost;
+      rebuilt November 18 (see the top): zip `a87e0a64…`, sources tar
+      `e094364d…`.**
 - [x] **Linux: rebuild the AppImage and its sources tar from the final
       commit.** Done November 17 from `359ab9c` with new profiles (see the top). `5724ff2`, `a820adc` and `0f42e4d` changed shipped files after `1e9a6e4`:
       `port/graphics/vulkan_bridge.c` (shared: a minimized window pauses
