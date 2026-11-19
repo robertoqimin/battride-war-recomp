@@ -513,9 +513,15 @@ to end on both GPUs.
       sources tar has the same 620 files with the same contents (only the
       tar's own times changed). `--check` passes; the eight files are in
       `dist/v0.6.0` and every `.sha256` checks.
-- [ ] GitHub release `v0.6.0` created as a **draft** with the eight files:
+- [x] GitHub release `v0.6.0` created as a **draft** with the eight files:
       the AppImage, the Linux sources tar, the Windows zip and the Windows
-      sources tar, each with its `.sha256`.
+      sources tar, each with its `.sha256`. Done November 18: `main`
+      fast-forwarded to `0ddbfc4` and tag `v0.6.0` on it. **The Windows
+      sources tar (2.29 GB) is over GitHub's 2 GiB file limit**, so it is
+      uploaded as `.part1` and `.part2` (1,142,860,800 bytes each; `cat`
+      joins them back to `e094364d…`) beside the whole tar's `.sha256`; the
+      release notes say how. Nine assets in all; every GitHub digest matches
+      the local file.
 - [ ] Published only when both sides are complete and tested.
 - [ ] Test folders removed.
 
