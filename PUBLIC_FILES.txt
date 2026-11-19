@@ -9,10 +9,13 @@ THIRD_PARTY_NOTICES.md
 config.toml
 docs/APPIMAGE.md
 docs/BUILD.md
+docs/CONFIG.md
+docs/DEVELOPMENT.md
 docs/FIRMWARE.md
 docs/ISSUES.md
 docs/PERFORMANCE.md
 docs/PUBLISHING.md
+docs/REQUIREMENTS.md
 docs/SAIL.md
 docs/WINDOWS.md
 docs/WINDOWS_PACKAGE.md
