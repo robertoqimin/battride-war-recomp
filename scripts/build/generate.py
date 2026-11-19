@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -36,11 +37,72 @@ def hook_graphics_buffers(ppu):
     with open(path, 'w', newline='') as f:
         f.write('\n'.join(lines))
 
+# The generated folders, relative to the port root; --cache keeps a copy of them.
+GENERATED = ('src/recomp', 'spu', 'analysis/regeneration')
+# Bump when what a cache entry holds or how it is restored changes.
+CACHE_FORMAT = 1
+
+def cache_key(sdk, elf_digest, dev_flash):
+    """Everything the generated sources depend on: the EBOOT, the pinned SDK's
+    tools, this script and the audio lifter, the SDK patches, recompile.json, the
+    firmware codecs the audio lifter translates, and the Python and Capstone the
+    tools run with. --jobs only splits the work and is left out."""
+    h = hashlib.sha256()
+    def add(label, data):
+        h.update(label.encode() + b'\0' + data + b'\0')
+    add('format', str(CACHE_FORMAT).encode())
+    add('eboot', elf_digest.encode())
+    add('python', sys.version.encode())
+    try:
+        from importlib.metadata import version
+        add('capstone', version('capstone').encode())
+    except Exception:
+        add('capstone', b'unknown')
+    files = [ROOT / 'recompile.json', ROOT / 'scripts/build/generate.py', ROOT / 'scripts/build/lift_audio_spu.py']
+    files += sorted((ROOT / 'patches/ps3recomp').glob('*.patch'))
+    for f in files:
+        add(f.relative_to(ROOT).as_posix(), f.read_bytes())
+    for f in sorted(p for p in (sdk / 'tools').rglob('*') if p.is_file() and '__pycache__' not in p.parts):
+        add('sdk/' + f.relative_to(sdk).as_posix(), f.read_bytes())
+    external = dev_flash / 'sys/external'
+    for f in sorted(external.glob('*.pic')) if external.is_dir() else ():
+        add('firmware/' + f.name, f.read_bytes())
+    return h.hexdigest()
+
+def restore_cached(entry, destinations):
+    """Install a cache entry's sources; its spu/sources.cmake names the folder it was made in."""
+    info = json.loads((entry / 'complete.json').read_text())
+    for name, dest in zip(GENERATED, destinations):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(entry / name, dest)
+    cmake = ROOT / 'spu/sources.cmake'
+    cmake.write_text(cmake.read_text().replace(info['spu_dir'], str(ROOT / 'spu')))
+
+def store_cached(cache, key, destinations):
+    """Keep a copy of the sources just generated as the only entry in cache."""
+    cache.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix='.gen-tmp-', dir=cache))
+    try:
+        for name, source in zip(GENERATED, destinations):
+            shutil.copytree(source, tmp / name)
+        (tmp / 'complete.json').write_text(json.dumps({'format': CACHE_FORMAT, 'key': key,
+                                                       'spu_dir': str(ROOT / 'spu')}, indent=2))
+        entry = cache / ('gen-' + key[:32])
+        shutil.rmtree(entry, ignore_errors=True)
+        tmp.rename(entry)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    for old in cache.iterdir():
+        if old.is_dir() and old.name != entry.name and old.name.startswith(('gen-', '.gen-tmp-')):
+            shutil.rmtree(old, ignore_errors=True)
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--sdk', type=Path, default=ROOT.parent / 'ps3recomp')
     ap.add_argument('--jobs', type=int, default=4)
     ap.add_argument('--verify-only', action='store_true')
+    ap.add_argument('--cache', type=Path,
+                    help='keep the generated sources here and reuse them when nothing they depend on changed')
     args = ap.parse_args()
     spec = json.loads((ROOT / 'recompile.json').read_text())
     sdk = args.sdk.resolve()
@@ -70,10 +132,23 @@ def main():
     if args.verify_only:
         print('OK: pinned SDK and matching EBOOT; no files generated')
         return
-    destinations = [ROOT / 'src/recomp', ROOT / 'spu', ROOT / 'analysis/regeneration']
+    destinations = [ROOT / name for name in GENERATED]
     for path in destinations:
         if path.exists() or path.is_symlink():
             ap.error(f'refusing to overwrite {path}; use a fresh source checkout')
+    dev_flash = Path(os.environ.get('PS3_DEV_FLASH') or ROOT / 'firmware/dev_flash')
+    key = entry = None
+    if args.cache:
+        key = cache_key(sdk, digest, dev_flash)
+        entry = args.cache.resolve() / ('gen-' + key[:32])
+        try:
+            if json.loads((entry / 'complete.json').read_text()).get('key') == key:
+                restore_cached(entry, destinations)
+                print('Reused the sources translated earlier (%s); nothing they depend on changed.' % entry.name)
+                return
+        except (OSError, ValueError):
+            for path in destinations:
+                shutil.rmtree(path, ignore_errors=True)
     with tempfile.TemporaryDirectory(prefix='.generate-', dir=ROOT) as name:
         stage = Path(name)
         ppu = stage / 'src/recomp'
@@ -95,7 +170,6 @@ def main():
             raise RuntimeError('unexpected SPU registry; generated sources were not installed')
         # The audio task (and, with the firmware present, its MP3 codec):
         # rejected by the generic pipeline, translated below its data tail.
-        dev_flash = Path(os.environ.get('PS3_DEV_FLASH') or ROOT / 'firmware/dev_flash')
         audio = [sys.executable, ROOT / 'scripts/build/lift_audio_spu.py', '--sdk', sdk,
                  '--elf', elf, '--spu', spu]
         if dev_flash.is_dir():
@@ -113,6 +187,11 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
         for source, dest in zip((ppu, spu, analysis), destinations):
             source.rename(dest)
+    if args.cache:
+        try:
+            store_cached(args.cache.resolve(), key, destinations)
+        except OSError as exc:
+            print(f'Could not keep a copy in {args.cache} ({exc}); the next update translates again.')
     print('Generated sources installed locally; the audio SPU task is translated below its data tail.')
     print('Do not publish game/, src/recomp/, spu/ or analysis/.')
 

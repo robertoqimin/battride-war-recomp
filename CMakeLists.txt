@@ -576,7 +576,7 @@ if(PORT_TESTS)
     find_package(Python3 COMPONENTS Interpreter)
     find_program(PORT_BASH bash)
     if(Python3_Interpreter_FOUND)
-        foreach(t importer publication frame_report)
+        foreach(t importer generate publication frame_report)
             add_test(NAME ${t} COMMAND "${Python3_EXECUTABLE}" -m unittest "tests/test_${t}.py"
                      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
             set_tests_properties(${t} PROPERTIES LABELS "python")

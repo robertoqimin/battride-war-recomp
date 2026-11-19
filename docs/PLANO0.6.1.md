@@ -633,6 +633,16 @@ recompilar por 15 a 60 minutos.
 
 ### U2: reaproveitar a tradução (cerca de 1 dia)
 
+> **Feito em 19/11.** `scripts/build/generate.py --cache <pasta>` guarda uma cópia de `src/recomp/`, `spu/` e
+> `analysis/regeneration/` em `<pasta>/gen-<chave>/` e a reaproveita quando a chave bate. A chave junta o EBOOT, as
+> ferramentas do SDK (`tools/`), os patches do SDK, o `generate.py`, o `lift_audio_spu.py`, o `recompile.json`, os
+> codecs do firmware e as versões do Python e do Capstone; o `--jobs` fica de fora. O importer passa
+> `--cache <dados>/cache`. Fica só a entrada atual; as antigas são apagadas. Na reutilização, o único arquivo com o
+> caminho da árvore (`spu/sources.cmake`) é reescrito para a pasta nova. Medido neste notebook: a tradução levou 86 s
+> e a reutilização menos de 1 s; os arquivos saíram idênticos entre as duas, e iguais aos que o repositório gerou. O
+> cache ocupa cerca de 600 MB na pasta de dados. Testes em `tests/test_generate.py`. Na prática a opção ficou no
+> `generate.py` com o nome `--cache`, em vez do `--reuse` descrito abaixo.
+
 5. Guardar o `src/recomp/`, o `spu/` e o `analysis/regeneration/` gerados em `<dados>/cache/gen-<chave>/`. A chave é
    o hash do EBOOT, do firmware usado no áudio, do commit do SDK, dos patches do SDK, do `generate.py`, do
    `lift_audio_spu.py` e das opções de geração.

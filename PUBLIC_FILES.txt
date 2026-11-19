@@ -77,6 +77,7 @@ tests/test_frame_report.py
 tests/test_fs_offset.cpp
 tests/test_gcm_jump.c
 tests/test_gcm_jump.sh
+tests/test_generate.py
 tests/test_graphics_buffers.cpp
 tests/test_graphics_buffers.sh
 tests/test_importer.py

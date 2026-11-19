@@ -754,7 +754,10 @@ class Package:
             except OSError:
                 shutil.copy2(data / 'game/EBOOT.ELF', port / 'game/EBOOT.ELF')
             status('Step 1 of 2: translating the game code from your EBOOT. This takes a few minutes...')
-            code, _ = runner.run([python, port / 'scripts/build/generate.py', '--sdk', sdk, '--jobs', jobs],
+            # data/cache keeps the translation, so an update that changes only the port's own
+            # sources or the toolchain skips this step (generate.py checks what it depends on).
+            code, _ = runner.run([python, port / 'scripts/build/generate.py', '--sdk', sdk, '--jobs', jobs,
+                                  '--cache', data / 'cache'],
                                  cwd=port, env=env, log=log, on_line=lambda _: None)
             if code:
                 raise ImportError('Translating the game code failed. See build.log.')
