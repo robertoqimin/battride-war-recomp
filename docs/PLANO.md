@@ -1,6 +1,8 @@
 # Plano de desempenho e gráficos: battride-war-recomp
 
-Repositório alvo: [robertoqimin/battride-war-recomp](https://github.com/robertoqimin/battride-war-recomp) (v0.6.0, SDK `sp00nznet/ps3recomp@a6d76c8`).
+**Versão alvo: 0.6.1.**
+
+Repositório alvo: [robertoqimin/battride-war-recomp](https://github.com/robertoqimin/battride-war-recomp) (partindo da v0.6.0, SDK `sp00nznet/ps3recomp@a6d76c8`).
 Referência: [SamiEnazi/infamous2-port](https://github.com/SamiEnazi/infamous2-port) (v0.6.3).
 
 Este documento junta sete coisas:
