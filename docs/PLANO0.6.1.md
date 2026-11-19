@@ -653,6 +653,26 @@ recompilar por 15 a 60 minutos.
 
 ### U3: compilação incremental com ccache (1–2 dias)
 
+> **Feito em 19/11, sem ccache.** Testado primeiro com ccache: o 4.5 do Ubuntu 22.04 recusa `-fprofile-prefix-path`
+> (`unsupported_compiler_option`), e o código do 4.14.1, que aceita a opção, procura o `.gcda` por um nome que não é
+> o dos nossos perfis (sem o prefixo), então os 84 chunks PPU e os bridges C++ continuariam sem cache. No lugar dele:
+> **a pasta de build fica entre builds e o ninja recompila só o que mudou.**
+> - `<dados>/.build` (`.b` no Windows) com nome fixo; apagada quando muda qualquer coisa da identidade além das
+>   fontes (receita, SDK, EBOOT, toolchain, CPU, perfis), gravada em `.build/base.json`.
+> - `sync_tree()` copia a árvore do port regravando só os arquivos de conteúdo diferente (com a hora atual); os
+>   iguais mantêm a hora, para o ninja não errar em nenhum dos dois sentidos.
+> - Linux: o AppImage monta num caminho novo a cada execução e os compiladores anotam os próprios headers pelo
+>   caminho real; o toolchain é copiado uma vez para `<dados>/.toolchain` (de novo só se mudar) e o build passa por
+>   `<dados>/.appdir`, com links para essa cópia e para a montagem atual. Sem isso, o ninja recompilava o SDK e o
+>   CMake quebrava o `#include_next <stdlib.h>` na segunda montagem.
+> - Os fontes gerados saem da pasta de build no fim e voltam do cache da U2.
+>
+> Medido com três AppImages (A, B = A com um bridge alterado, C = B com o README alterado): A completo em 603 s; A
+> de novo, 1 s, nada compilado; B, **4 s** (1 arquivo e o link); C, 1 s. Nenhuma das 43.385 dependências do ninja
+> aponta para a montagem. Espaço a mais na pasta de dados: cerca de 1,4 GB (`.build` 242 MB, `cache` 601 MB,
+> `.toolchain` 551 MB). O jogo de B não foi aberto; o Windows ainda não foi testado (sem cópia do toolchain lá,
+> a pasta do pacote é fixa). Os itens 8, 10 e 11 abaixo (ccache, `namespace`, `max_size`) ficam sem efeito.
+
 8. Distribuir o ccache no pacote Windows (há um pacote para o MSYS2 UCRT64) e no toolchain do AppImage. Ligar com
    `CMAKE_C_COMPILER_LAUNCHER` e `CMAKE_CXX_COMPILER_LAUNCHER`.
    - No PGO, o `pgo_relpaths.py` já é launcher. Encadeie os dois (ccache chamando o `pgo_relpaths.py`, ou o contrário)

@@ -74,7 +74,7 @@ class ImporterTests(unittest.TestCase):
             (root/'usr/share/battride/port/port/io/input_bridge.c').write_text('x')
             self.assertIsNone(m.Package(root).built_runner(data))
     def make_package(self,root,version='1'):
-        (root/'app').mkdir(exist_ok=True)
+        (root/'app').mkdir(parents=True,exist_ok=True)
         (root/'app/package.json').write_text(json.dumps({'version':version,'sdk_commit':'s','elf_sha256':'e','codecs':{}}))
         (root/'app/disc-manifest.json').write_text('{}')
         port=root/'usr/share/battride/port'
@@ -117,6 +117,49 @@ class ImporterTests(unittest.TestCase):
             (root/'app/build-packages.txt').write_text('gcc-11 11.4.0-1\n');t1=m.Package(root).build_identity()['toolchain']
             (root/'app/build-packages.txt').write_text('gcc-11 11.4.0-2\n')
             self.assertNotEqual(m.Package(root).build_identity()['toolchain'],t1)
+    @unittest.skipIf(m.WINDOWS,'Linux AppImage layout')
+    def test_build_root_follows_the_mount(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def package(name):
+                root=Path(tmp)/name;self.make_package(root)
+                for d in ('usr/bin','usr/lib','usr/share'):(root/d).mkdir(parents=True,exist_ok=True)
+                (root/'usr/toolchain/sysroot/usr/bin').mkdir(parents=True);(root/'usr/toolchain/sysroot/usr/bin/gcc').write_text('gcc')
+                (root/'usr/toolchain/sysroot/bin').symlink_to('usr/bin')
+                (root/'app/build-packages.txt').write_text('gcc 1\n')
+                return root
+            data=Path(tmp)/'data';data.mkdir()
+            a=package('mountA');appdir=m.Package(a).build_root(data)
+            self.assertEqual(appdir,data/'.appdir')
+            # The toolchain is a real copy in the data folder (symlinks kept), the rest follows the mount.
+            self.assertEqual((appdir/'usr/toolchain').resolve(),(data/'.toolchain').resolve())
+            self.assertTrue((data/'.toolchain/sysroot/bin').is_symlink())
+            self.assertEqual((appdir/'usr/bin').resolve(),(a/'usr/bin').resolve())
+            stamp=data/'.toolchain/.package-toolchain';first=stamp.stat().st_mtime_ns
+            b=package('mountB');m.Package(b).build_root(data)
+            self.assertEqual((appdir/'usr/bin').resolve(),(b/'usr/bin').resolve())
+            self.assertEqual(stamp.stat().st_mtime_ns,first)                   # same toolchain: not copied again
+            (b/'app/build-packages.txt').write_text('gcc 2\n');(b/'usr/toolchain/sysroot/usr/bin/gcc').write_text('gcc 2')
+            m.Package(b).build_root(data)
+            self.assertEqual((data/'.toolchain/sysroot/usr/bin/gcc').read_text(),'gcc 2')
+    def test_sync_tree_rewrites_only_changed_files(self):
+        import os,time
+        with tempfile.TemporaryDirectory() as tmp:
+            src=Path(tmp)/'src';dest=Path(tmp)/'dest'
+            for name,text in (('a.c','a'),('dir/b.c','b'),('gone.c','x')):
+                (src/name).parent.mkdir(parents=True,exist_ok=True);(src/name).write_text(text)
+            m.sync_tree(src,dest)
+            (dest/'src/recomp').mkdir(parents=True);(dest/'src/recomp/ppu.cpp').write_text('generated')
+            old=time.time()-3600
+            for name in ('a.c','dir/b.c'):
+                os.utime(dest/name,(old,old))
+            (src/'dir/b.c').write_text('b2');(src/'gone.c').unlink();(src/'new.c').write_text('n')
+            m.sync_tree(src,dest,keep=('src',))
+            self.assertAlmostEqual((dest/'a.c').stat().st_mtime,old,delta=1)      # same content: time kept
+            self.assertGreater((dest/'dir/b.c').stat().st_mtime,old+60)            # changed: now
+            self.assertEqual((dest/'dir/b.c').read_text(),'b2')
+            self.assertFalse((dest/'gone.c').exists())
+            self.assertEqual((dest/'new.c').read_text(),'n')
+            self.assertEqual((dest/'src/recomp/ppu.cpp').read_text(),'generated')  # kept
     def test_build_inputs_cover_what_the_build_reads(self):
         # Every repository path CMakeLists.txt names, every one generate.py and
         # lift_audio_spu.py open below the port root, and every one build_runner()

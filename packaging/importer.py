@@ -103,6 +103,41 @@ def tree_sha256(root, names):
     return h.hexdigest()
 
 
+def sync_tree(source, dest, keep=()):
+    """Make dest a copy of source, rewriting only the files whose content differs.
+
+    Ninja rebuilds what is newer than its outputs. A file copied with its packaged
+    time could be older than objects built earlier and be skipped although it changed,
+    and a file rewritten with the same content would be recompiled for nothing; so
+    changed files get the current time and unchanged ones keep theirs. Files dest
+    has and source does not are removed, except below the relative paths in keep."""
+    source, dest = Path(source), Path(dest)
+    wanted = set()
+    for f in source.rglob('*'):
+        if not f.is_file():
+            continue
+        name = f.relative_to(source).as_posix()
+        wanted.add(name)
+        target = dest / name
+        data = f.read_bytes()
+        if target.is_file() and not target.is_symlink() and target.read_bytes() == data:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() or target.exists():
+            target.unlink()
+        target.write_bytes(data)
+        shutil.copymode(f, target)
+    for f in sorted(dest.rglob('*'), reverse=True) if dest.is_dir() else ():
+        name = f.relative_to(dest).as_posix()
+        if any(name == k or name.startswith(k + '/') for k in keep):
+            continue
+        if f.is_file() or f.is_symlink():
+            if name not in wanted:
+                f.unlink()
+        elif f.is_dir() and not any(f.iterdir()):
+            f.rmdir()
+
+
 # Peak memory of one compiler job on the largest generated PPU chunk, rounded up.
 BUILD_JOB_MEMORY = 2 * 1024**3
 
@@ -634,13 +669,49 @@ class Package:
         finally:
             shutil.rmtree(stage, ignore_errors=True)
 
-    def build_env(self, data):
+    def build_root(self, data):
+        """The package root the build uses.
+
+        On Linux the AppImage is mounted at a new /tmp/.mount_* path on every start.
+        The build directory is kept between builds (build_runner), and ninja records
+        the headers each object read: the compilers name their own headers by their
+        real path, which would be gone at the next start, so every object would be
+        rebuilt, and CMake's cached compiler checks would point at the old mount.
+        So the toolchain is copied once to <data>/.toolchain (again only when it
+        changes), and the build goes through <data>/.appdir, whose usr/toolchain
+        links to that copy and whose other folders link to the current mount.
+        Windows packages stay in place."""
+        if WINDOWS:
+            return self.root
+        data = Path(data)
+        copy, stamp = data / '.toolchain', data / '.toolchain' / '.package-toolchain'
+        wanted = self.toolchain_sha256() or self.sources_sha256()
+        if not (stamp.is_file() and stamp.read_text() == wanted):
+            shutil.rmtree(copy, ignore_errors=True)
+            shutil.copytree(self.root / 'usr/toolchain', copy, symlinks=True)
+            stamp.write_text(wanted)
+        appdir = data / '.appdir'
+        if appdir.is_symlink() or appdir.is_file():
+            appdir.unlink()                             # the single link of earlier versions
+        (appdir / 'usr').mkdir(parents=True, exist_ok=True)
+        links = {name: self.root / 'usr' / name for name in ('bin', 'lib', 'share')}
+        links['toolchain'] = copy
+        for name, target in links.items():
+            link, tmp = appdir / 'usr' / name, appdir / 'usr' / (name + '.tmp')
+            if tmp.is_symlink() or tmp.exists():
+                tmp.unlink()
+            os.symlink(target, tmp)
+            os.replace(tmp, link)
+        return appdir
+
+    def build_env(self, data, root=None):
         """Environment for translating and compiling with the bundled toolchain only.
 
         No LD_LIBRARY_PATH: the bundled tools find their libraries through their
         own RPATH, and host programs the build starts (ninja runs /bin/sh) must
         keep using the host's libraries.
         """
+        root = root or self.root
         env = os.environ.copy()
         for key in list(env):
             if key.startswith(('APPIMAGE', 'PYTHON', 'GI_', 'GTK_', 'GDK_', 'QT_', 'CMAKE_', 'PKG_CONFIG',
@@ -655,10 +726,10 @@ class Package:
             env['PATH'] = os.pathsep.join([str(tools), str(self.root / 'usr/bin'), env.get('PATH', '')])
             env.update(PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1', PS3_DEV_FLASH=str(Path(data) / 'firmware/dev_flash'))
             return env
-        toolchain = self.root / 'usr/toolchain'
-        env['PATH'] = os.pathsep.join([str(toolchain / 'sysroot/usr/bin'), str(self.root / 'usr/bin'),
+        toolchain = root / 'usr/toolchain'
+        env['PATH'] = os.pathsep.join([str(toolchain / 'sysroot/usr/bin'), str(root / 'usr/bin'),
                                        env.get('PATH', '/usr/bin:/bin')])
-        env.update(PYTHONHOME=str(self.root / 'usr'), PYTHONPLATLIBDIR='lib', PYTHONDONTWRITEBYTECODE='1',
+        env.update(PYTHONHOME=str(root / 'usr'), PYTHONPLATLIBDIR='lib', PYTHONDONTWRITEBYTECODE='1',
                    LC_ALL='C.UTF-8', PS3_DEV_FLASH=str(Path(data) / 'firmware/dev_flash'))
         return env
 
@@ -740,15 +811,35 @@ class Package:
         if shutil.disk_usage(data).free < 4 * 1024**3:
             raise ImportError('Building the game needs about 4 GB of free space in the data folder.')
         jobs = build_jobs()
-        python = self.windows_toolchain()[1] if WINDOWS else self.root / 'usr/bin/python3'
-        sdk = self.root / 'usr/share/battride/ps3recomp'
-        env = self.build_env(data)
         check_data_path(data)
-        work = data / scratch_name('.b-' if WINDOWS else '.build-')
+        root = self.build_root(data)
+        python = self.windows_toolchain()[1] if WINDOWS else root / 'usr/bin/python3'
+        sdk = root / 'usr/share/battride/ps3recomp'
+        env = self.build_env(data, root)
+        # The build directory stays between builds, so an update that changes a few of
+        # the port's sources recompiles only those (ninja) instead of the whole game.
+        # It starts over when anything else the objects depend on changed: the
+        # recipe, the SDK, the EBOOT, the toolchain, the CPU or the profiles.
+        work = data / ('.b' if WINDOWS else '.build')
+        for old in data.glob('.b-*' if WINDOWS else '.build-*'):
+            shutil.rmtree(old, ignore_errors=True)      # random-named folders of 0.6.0 and earlier
+        base = {k: v for k, v in self.build_identity().items() if k != 'sources'}
+        try:
+            if json.loads((work / 'base.json').read_text()) != base:
+                raise ValueError
+        except (OSError, ValueError):
+            shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(exist_ok=True)
+        (work / 'base.json').write_text(json.dumps(base, indent=2))
         try:
             port = work / 'port'
-            shutil.copytree(self.root / 'usr/share/battride/port', port)
+            # The generated sources are put back by generate.py (from data/cache when it can).
+            generated = ('src/recomp', 'spu', 'analysis/regeneration')
+            for name in generated:
+                shutil.rmtree(port / name, ignore_errors=True)
+            sync_tree(self.root / 'usr/share/battride/port', port, keep=('game', 'src', 'analysis'))
             (port / 'game').mkdir(exist_ok=True)
+            (port / 'game/EBOOT.ELF').unlink(missing_ok=True)
             try:
                 os.link(data / 'game/EBOOT.ELF', port / 'game/EBOOT.ELF')
             except OSError:
@@ -764,6 +855,7 @@ class Package:
             build = work / 'build'
             profiles = self.profiles()
             if profiles:
+                shutil.rmtree(work / 'pgo', ignore_errors=True)
                 profiles = place_profiles(profiles, work / 'pgo', sdk)
             lines = []
             if WINDOWS:
@@ -772,9 +864,9 @@ class Package:
                 configure = [cmake, '-S', port, '-B', build, '-G', 'Ninja', '-DCMAKE_C_COMPILER=clang',
                              '-DCMAKE_CXX_COMPILER=g++']
             else:
-                cmake = self.root / 'usr/toolchain/sysroot/usr/bin/cmake'
+                cmake = root / 'usr/toolchain/sysroot/usr/bin/cmake'
                 configure = [cmake, '-S', port, '-B', build, '-G', 'Ninja',
-                             '-DCMAKE_TOOLCHAIN_FILE=' + str(self.root / 'usr/toolchain/toolchain.cmake'),
+                             '-DCMAKE_TOOLCHAIN_FILE=' + str(root / 'usr/toolchain/toolchain.cmake'),
                              '-DPORT_PORTABLE=ON', '-Dglslang_DIR=' + str(port / 'packaging/linux/glslang-compat')]
             code, _ = runner.run([*configure,
                                   '-DCMAKE_BUILD_TYPE=Debug', '-DCMAKE_C_FLAGS_DEBUG=-O2', '-DCMAKE_CXX_FLAGS_DEBUG=-O2',
@@ -831,7 +923,10 @@ class Package:
             status('Game built for this computer.')
             return out / 'game-runner'
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            # The objects stay for the next build; the generated sources (about 600 MB)
+            # have a copy in data/cache and are put back from there.
+            for name in ('src/recomp', 'spu', 'analysis/regeneration'):
+                shutil.rmtree(work / 'port' / name, ignore_errors=True)
 
     def windows_dlls(self, exe, env):
         """The toolchain DLLs exe imports, directly or through each other (objdump -p)."""
