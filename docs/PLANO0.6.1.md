@@ -13,7 +13,8 @@ Este documento junta sete coisas:
 4. Melhorias próprias do Battride, que não dependem do port do inFAMOUS 2.
 5. Os problemas da instalação no Windows: o limite de 260 caracteres, os avisos por falta de assinatura e o
    Windows 10 sem teste.
-6. As atualizações que hoje recompilam o jogo inteiro, de 15 a 60 minutos, mesmo quando só a documentação mudou.
+6. As atualizações que hoje recompilam o jogo inteiro, de 15 a 60 minutos, mesmo quando só a documentação mudou, e
+   por que a primeira compilação não pode sumir.
 7. O tamanho dos pacotes: 707 MB no Windows e 235 MB no AppImage, contra cerca de 50 MB no infamous2.
 
 No fim há uma ordem única de execução.
@@ -35,7 +36,7 @@ No fim há uma ordem única de execução.
 - [Parte 7: fases G1 a G7, melhorias gráficas](#parte-7-fases-g1-a-g7-melhorias-gráficas)
 - [Parte 8: o que não fazer](#parte-8-o-que-não-fazer)
 - [Parte 9: instalação no Windows (W1 a W4)](#parte-9-instalação-no-windows-w1-a-w4)
-- [Parte 10: atualizações sem recompilar tudo (U1 a U5)](#parte-10-atualizações-sem-recompilar-tudo-u1-a-u5)
+- [Parte 10: atualizações sem recompilar tudo (U1 a U6)](#parte-10-atualizações-sem-recompilar-tudo-u1-a-u6)
 - [Parte 11: tamanho dos pacotes (S1 a S3)](#parte-11-tamanho-dos-pacotes-s1-a-s3)
 - [Parte 12: ordem única de execução](#parte-12-ordem-única-de-execução)
 
@@ -548,7 +549,30 @@ Antes de remover "Windows 10 needs testing" das notas de versão:
 
 ---
 
-## Parte 10: atualizações sem recompilar tudo (U1 a U5)
+## Parte 10: atualizações sem recompilar tudo (U1 a U6)
+
+### Por que o jogador sempre compila uma vez
+
+**A primeira compilação não pode sumir, e o motivo é legal, não técnico.** O jogo compilado é o código do EBOOT
+traduzido para C e depois para código de máquina: uma obra derivada do jogo. A 0.2.0 trazia esse executável pronto e
+por isso não pôde ser publicada (`docs/APPIMAGE.md`, "Builds on the player's computer in 0.3.0"). Compilar na máquina
+do jogador, a partir do disco dele, é o que permite publicar o projeto.
+
+As alternativas esbarram no mesmo ponto:
+
+- **Patch binário** (xdelta) do EBOOT para o executável: os dois quase não têm bytes em comum, então o patch conteria
+  o jogo traduzido inteiro. É distribuir o código do mesmo jeito.
+- **Compilar num servidor** e devolver ao jogador: o projeto passaria a receber EBOOTs e a distribuir o jogo
+  compilado, além de pagar o servidor. Descartado.
+- **A engine pronta (S3)** diminui o pacote, mas quase não muda o tempo: os 84 arquivos PPU traduzidos são a maior
+  parte da compilação, e eles continuam sendo compilados pelo jogador.
+
+**O objetivo da trilha U é outro: compilar uma vez só, e mais rápido.** Na instalação o jogador compila (12 min com
+4 jobs no Linux e cerca de 40 min com 2 jobs no Windows, no Ryzen 5 4600H, medido em 17 e 18/11), e depois quase
+nunca mais. Por isso a trilha U entra **na 0.6.1**, junto com a do Windows, e não depois.
+
+**Exemplo real.** O `90a666c` só mudou documentação, mas ela vai dentro dos pacotes e entra no hash; quem atualizar da
+0.6.0 para uma versão com esse commit vai recompilar tudo. Depois da U1, uma mudança assim não recompila nada.
 
 ### Como está na v0.6.0 (`packaging/importer.py`)
 
@@ -644,6 +668,27 @@ recompilar por 15 a 60 minutos.
 18. Conferir que mover a pasta de dados para outro PC (outra CPU) recompila e não usa o cache da CPU anterior.
 
 Os tempos esperados são estimativas e ainda não foram medidos.
+
+### U6: primeira compilação mais curta, com `-O1` no código frio (1–2 dias) [precisa medir]
+
+A U1 a U5 cuidam das atualizações; esta ataca a primeira instalação. Quase todo o tempo está nos 84 arquivos PPU
+traduzidos, compilados com `-O2`, mas o profile mostra que o tempo de CPU do jogo se concentra em poucos chunks (015,
+021 e 029 somam boa parte do `runTaskMain`, Parte 2).
+
+19. **Medir onde vai o tempo de compilação:** o `.ninja_log` de um build completo dá o tempo de cada objeto. Listar os
+    chunks PPU por tempo de compilação ao lado da fração de tempo de CPU que cada um tem no `PORT_PROFILE` da STG02.
+20. **Usar os perfis de PGO para separar quente e frio.** Um chunk cujas funções somam quase zero de contagem no
+    `.gcda` é frio. O CMake compila os frios com `-O1` (ou `-Og`) e os quentes com `-O2`, por uma lista gerada a
+    partir dos perfis e distribuída junto com eles (`usr/share/battride/pgo/`), sem código do jogo.
+21. **Regra de adoção:** a mesma da Parte 3, com três pares intercalados no `bench_combat.py`, mais o tempo total do
+    build. A mudança só entra se o fps não piorar.
+22. **Cuidado com os dados de cobertura:** o treino só passa pelo início do jogo (menus, tutorial e STG02). Um chunk
+    frio no treino pode ser quente em outra fase. Validar também o primeiro estágio de cada capítulo da Chronicle com
+    o save de história completa, como na 0.5.2.
+23. Mudar as flags de um chunk muda o codegen, então os perfis precisam ser retreinados (U4).
+
+O ganho em minutos depende da medição do item 19: se os chunks frios forem a maioria do tempo de compilação, o
+`-O1` pode cortar boa parte dele. Nada foi medido ainda.
 
 ---
 
@@ -798,8 +843,11 @@ gráficas podem correr em paralelo às de desempenho, porque mexem em arquivos d
 | W-g | **W2.3**: teste do hospedeiro assinado com DLL | Smart App Control | 1–2 dias |
 | W-h | **W4**: validação da 0.6.1 | a release | cerca de 1 dia |
 
-**A trilha de atualizações** também mexe só em `packaging/` e `scripts/`. Ela deve entrar **antes** da primeira
-versão que trouxer as fases de desempenho, para os jogadores não recompilarem por inteiro a cada correção pequena:
+**A trilha de atualizações** também mexe só em `packaging/` e `scripts/`, e **entra na 0.6.1** junto com a do
+Windows (decidido em 19/11). O jogador não tem como deixar de compilar na instalação (Parte 10, "Por que o jogador
+sempre compila uma vez"), mas com ela passa a compilar uma vez só, em vez de recompilar por inteiro a cada correção
+pequena. A U-a e a U-b vêm primeiro: são as mais baratas e já evitam o rebuild por mudanças de documentação, como a do
+`90a666c`.
 
 | # | Item | Resolve | Esforço |
 |---|---|---|---|
@@ -808,6 +856,7 @@ versão que trouxer as fases de desempenho, para os jogadores não recompilarem 
 | U-c | **U2**: reaproveitar a tradução | a etapa de tradução em toda atualização | cerca de 1 dia |
 | U-d | **U3**: ccache separado por CPU | a recompilação completa quando só os bridges mudam | 1–2 dias |
 | U-e | **U5**: validar os três cenários | — | cerca de 1 dia |
+| U-f | **U6**: `-O1` nos chunks PPU frios, guiado pelo PGO | o tempo da primeira compilação | 1–2 dias, mais medição; pode ficar para depois da 0.6.1 se a medição não mostrar ganho |
 
 **A trilha de tamanho** também mexe só em `packaging/` e `scripts/release/`, menos a S3, que mexe na arquitetura:
 
