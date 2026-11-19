@@ -189,6 +189,19 @@ PPU da thread principal.
 
 ### Fase 0: preparação (cerca de 1 dia)
 
+> **Testado em 19/11 e adiado.** O lifter do infamous2-port v0.6.3 (`1f407ee`), com todos os switches desligados,
+> **não** gera o mesmo código que o SDK fixado: o "tudo desligado" dele é o engine do próprio infamous2, um fork mais
+> novo do ps3recomp. No EBOOT do Battride ele separou **44.929 funções contra 18.864** (só 9.578 nomes em comum e 270
+> corpos idênticos), em **131 chunks contra 84**, e o header exige quatro peças de coerência PPU/SPU que o nosso
+> runtime não tem (`ppu_resv_line_note`, `ppu_store_coh_notify`, `g_spu_coh_armed`, `g_spu_coh_bitmap`). Trocar o
+> lifter quebraria o que depende da divisão atual (o gancho em `ppu_recomp_015.cpp`, o `-O3` do 029, os fast paths
+> de memória dos chunks 015/017/021/029/030, o `func_004B5120` nativo) e os perfis de PGO: 1 a 2 semanas, com
+> revalidação do jogo inteiro. O `ppu_disasm.py` dele é idêntico ao do SDK.
+>
+> **Decisão:** não trocar o lifter. Primeiro a F1 (métrica), depois M5, M3 e G1, e então a **Fase 1 como porte do
+> passe** `ppu_nv_dirty.py` (registradores locais) para o lifter do SDK fixado, mantendo funções, chunks, ajustes e
+> PGO (o caminho da M4, partindo do código pronto do infamous2).
+
 1. Vendorizar os quatro arquivos em `tools/lifter/`, com os avisos MIT, sem mexer no SDK fixado.
 2. Adicionar ao `scripts/build/generate.py` a opção `--lifter vendored|sdk` e um dicionário de switches passado por
    variável de ambiente.
@@ -892,7 +905,7 @@ Trocar as abas por uma **sidebar fixa à esquerda**, com ícone e nome de cada p
 
 | # | Fase | Ganho esperado | Esforço |
 |---|---|---|---|
-| 1 | **Fase 0**: lifter vendorizado, switches desligados | (base) | cerca de 1 dia |
+| 1 | ~~**Fase 0**: lifter vendorizado, switches desligados~~ adiada (19/11): o lifter gera outro programa (ver Fase 0) | (base) | 1–2 semanas; substituída pelo porte do passe na Fase 1 |
 | 2 | **F1**: métrica `busy_ms` | (para medir) | cerca de 1 dia |
 | 3 | **F2**: uncap e teste de velocidade | define se a F3 existe | 1–2 dias |
 | 4 | **M3**: base constante (hidden, no-pie, endereço fixo) | 2–5% | horas a 2 dias |
