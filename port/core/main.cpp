@@ -468,8 +468,28 @@ static bool alloc_guest_vm(void)
      * from its own mmap chunk and returns a pointer 16 bytes past the page
      * start, so every commit failed with EINVAL and sys_memory_allocate
      * answered ENOMEM to every call. mmap's base is page-aligned and zeroed. */
+#ifdef PORT_VM_FIXED_ADDR
+    /* The translated code is compiled with this address as a constant
+     * (PORT_VM_BASE_CONST, scripts/build/generate.py), so the arena must be
+     * exactly here; there is no fallback. The address is far from where the
+     * kernel puts the executable, its heap, libraries and stacks. */
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000
+#endif
+    void* const want = (void*)(uintptr_t)PORT_VM_FIXED_ADDR;
+    void* p = mmap(want, 0xE0000000u, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
+    if (p != MAP_FAILED && p != want) {      /* a kernel before 4.17 ignores the flag */
+        munmap(p, 0xE0000000u);
+        p = MAP_FAILED;
+    }
+    if (p == MAP_FAILED)
+        fprintf(stderr, "[vm] could not map guest memory at %p; this build needs that address "
+                        "(PORT_VM_FIXED=OFF builds without it)\n", want);
+#else
     void* p = mmap(NULL, 0xE0000000u, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+#endif
     vm_base = (p == MAP_FAILED) ? nullptr : (uint8_t*)p;
     ppu_vm_size = 0xE0000000u;
 #endif

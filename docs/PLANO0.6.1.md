@@ -303,6 +303,18 @@ com um contador de geração.
 
 ### M3: a base da memória do guest como constante (2–5%, barato)
 
+> **Feito em 19/11 (experimento 3; os 1 e 2 não se aplicam).** No Linux o código traduzido já lia `vm_base` direto,
+> relativo ao RIP (`R_X86_64_PC32`, sem GOT), então `hidden` e `-no-pie` não tinham o que ganhar. O custo era outro:
+> o valor era relido da memória a cada acesso (19.499 referências no chunk 021 para 18.642 acessos), porque um store
+> por `uint8_t*` pode apontar para ele. Agora (`PORT_VM_FIXED`, Linux x86-64) o `alloc_guest_vm` mapeia a memória do
+> guest em `0x200000000000` com `MAP_FIXED_NOREPLACE`, sem alternativa (o jogo para com uma mensagem se o endereço
+> estiver ocupado), e o `generate.py` (`pin_vm_base`) põe no `ppu_recomp.h` um `#define vm_base` constante que só vale
+> nos chunks (`PORT_VM_BASE_CONST`), e protege a redeclaração de cada chunk. No chunk 021: 0 leituras de `vm_base`,
+> 15.344 `movabs` da constante; executável 0,8 MB maior. Três pares intercalados na Radeon integrada, sem PGO dos dois
+> lados: busy 18,92 → **18,45 ms** (−2,5%), fps 50,3 → 51,4, **p95 26,5 → 23,4 ms**, **pior 5 s 39,6 → 42,8 fps**,
+> 1% low 32,0 → 34,5 (p95 e pior 5 s melhores nos três pares). **Pendente:** retreinar os perfis de PGO (as linhas
+> dos chunks mudaram) e medir com PGO; o Windows continua com `vm_base` variável.
+
 Em cada acesso, o endereço do `vm_base` sai do GOT e o GCC não consegue manter o valor num registrador depois de
 stores por `uint8_t*` ou de chamadas. Três experimentos, do mais barato ao mais caro:
 

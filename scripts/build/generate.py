@@ -96,6 +96,37 @@ def store_cached(cache, key, destinations):
         if old.is_dir() and old.name != entry.name and old.name.startswith(('gen-', '.gen-tmp-')):
             shutil.rmtree(old, ignore_errors=True)
 
+# The guest arena's base as a constant in the translated code (port M3). Every
+# guest access read vm_base back from memory: stores through uint8_t* may alias
+# it, so the compiler reloaded it after each one. When the build maps the arena
+# at a fixed address (PORT_VM_FIXED_ADDR, main.cpp) and compiles the chunks
+# with PORT_VM_BASE_CONST, vm_base below the declaration is that constant,
+# kept in a register; anything else that includes the header is unchanged.
+VM_BASE_DECL = 'extern uint8_t* vm_base;'
+VM_BASE_CONST = ('#if defined(PORT_VM_BASE_CONST) && defined(PORT_VM_FIXED_ADDR)\n'
+                 '#define vm_base ((uint8_t*)(uintptr_t)PORT_VM_FIXED_ADDR)\n'
+                 '#endif')
+
+# Each chunk declares the variable again; with the constant that line goes.
+CHUNK_VM_BASE_DECL = 'extern "C" uint8_t* vm_base;\n'
+
+def pin_vm_base(ppu):
+    path = ppu / 'ppu_recomp.h'
+    text = path.read_text()
+    if text.count(VM_BASE_DECL + '\n') != 1:
+        raise RuntimeError('vm_base constant: expected one "%s" line in ppu_recomp.h' % VM_BASE_DECL)
+    path.write_text(text.replace(VM_BASE_DECL + '\n', VM_BASE_DECL + '\n' + VM_BASE_CONST + '\n'))
+    for chunk in sorted(ppu.glob('ppu_recomp_*.cpp')):
+        with open(chunk, newline='') as f:
+            text = f.read()
+        n = text.count(CHUNK_VM_BASE_DECL)
+        if n > 1:
+            raise RuntimeError('vm_base constant: %d declarations in %s' % (n, chunk.name))
+        if n:
+            with open(chunk, 'w', newline='') as f:
+                f.write(text.replace(CHUNK_VM_BASE_DECL,
+                                     '#ifndef PORT_VM_BASE_CONST\n' + CHUNK_VM_BASE_DECL + '#endif\n'))
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--sdk', type=Path, default=ROOT.parent / 'ps3recomp')
@@ -162,6 +193,7 @@ def main():
              '--hle-stubs', analysis / 'EBOOT.imports.json', '--output', ppu,
              '--jobs', args.jobs, '--chunk-lines', '80000'])
         hook_graphics_buffers(ppu)
+        pin_vm_base(ppu)
         run([sys.executable, sdk / 'tools/build_spu_workloads.py', '--input', elf,
              '--lifted', spu, '--out', spu / 'spu_workloads.c', '--constructor', '--allow-partial'])
         inventory = json.loads((spu / 'inventory.json').read_text())

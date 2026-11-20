@@ -491,6 +491,14 @@ else()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "${PORT_LIFTED_OPTIONS}")
 endif()
+# The guest arena at a fixed address, its base a constant in the translated
+# code (scripts/build/generate.py, pin_vm_base; main.cpp, alloc_guest_vm).
+option(PORT_VM_FIXED "Map guest memory at a fixed address; vm_base constant in the lifted code" ON)
+if(PORT_VM_FIXED AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE PORT_VM_FIXED_ADDR=0x200000000000ULL)
+    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS PORT_VM_BASE_CONST=1)
+    message(STATUS "Guest memory:    fixed at 0x200000000000, vm_base constant in the lifted code")
+endif()
 
 # Hot animation/transform routines observed in the first mission.
 # Preserve guest arithmetic flags, optimize this generated unit only.
