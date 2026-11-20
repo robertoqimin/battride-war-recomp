@@ -46,6 +46,7 @@ port/core/store_wrap.c
 port/core/stubs.cpp
 port/core/sync_bridge.c
 port/core/thread_affinity.c
+port/core/timebase.c
 port/graphics/fsr1_bridge.c
 port/graphics/fsr1_spv.h
 port/graphics/gcm_bridge.c
@@ -94,6 +95,8 @@ tests/test_sail.cpp
 tests/test_sail.sh
 tests/test_sail_audio.cpp
 tests/test_sail_audio.sh
+tests/test_timebase.c
+tests/test_timebase.sh
 tests/test_vertex_decode.cpp
 tests/test_vertex_decode.sh
 tests/test_vertex_remap.c

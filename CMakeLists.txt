@@ -584,6 +584,16 @@ if(PORT_PPU_WRAP_STORES AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT W
         "-Wl,--wrap=vm_write8,--wrap=vm_write16,--wrap=vm_write32,--wrap=vm_write64")
 endif()
 
+# The guest timebase (mftb) from the CPU's invariant TSC instead of
+# clock_gettime, which is a slow hardware read when the kernel's clock source
+# is HPET (port/core/timebase.c). PORT_TIMEBASE=os at run time turns it off.
+option(PORT_TSC_TIMEBASE "Read the guest timebase from the invariant TSC (Linux, x86-64)" ON)
+if(PORT_TSC_TIMEBASE AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/timebase.c")
+    target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--wrap=ppu_timebase_now")
+    message(STATUS "Timebase:        invariant TSC when available (PORT_TIMEBASE=os for clock_gettime)")
+endif()
+
 # ---------------------------------------------------------------------------
 # Tests: ctest --test-dir <build dir> (-L to pick a label)
 # ---------------------------------------------------------------------------
@@ -604,8 +614,8 @@ if(PORT_TESTS)
     endif()
     # Most shell tests use Linux APIs (sys/mman.h, ELF weak symbols, the SDL
     # controller path); on Windows only these two build.
-    set(PORT_SHELL_TESTS gcm_jump graphics_buffers input_bridge lwcond ppu_memory vertex_decode vertex_remap
-                         vmx_simd sail sail_audio)
+    set(PORT_SHELL_TESTS gcm_jump graphics_buffers input_bridge lwcond ppu_memory timebase vertex_decode
+                         vertex_remap vmx_simd sail sail_audio)
     if(WIN32)
         set(PORT_SHELL_TESTS ppu_memory vmx_simd)
     endif()

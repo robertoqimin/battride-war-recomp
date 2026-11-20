@@ -325,6 +325,15 @@ passagem.
 
 ### M5: timebase via `rdtsc` (0%, ou 10%+ com HPET)
 
+> **Feito em 19/11.** `port/core/timebase.c` com `-Wl,--wrap=ppu_timebase_now` (Linux x86-64, opção
+> `PORT_TSC_TIMEBASE`): com TSC invariante (CPUID 0x80000007 EDX bit 8), `rdtsc` e uma multiplicação em ponto fixo
+> 32.32, calibrado em 20 ms contra `CLOCK_MONOTONIC` e refinado uma vez por segundo sobre a base inteira, rebaseado no
+> relógio do sistema. Cada thread nunca vê o tempo voltar. `PORT_TIMEBASE=os` volta ao caminho do SDK. Teste
+> `tests/test_timebase.sh`: mesma época, taxa 1,000000, 0,3 µs de diferença após 3 s, 4 threads sem recuo. Medido
+> na Radeon integrada com o kernel em TSC, dois pares: busy 19,76 contra 19,78 ms e 19,72 contra 20,77 ms (ruído; sem
+> piora). **Não testado com HPET**: mudar o relógio do kernel é configuração do sistema; quem rodar com HPET pode
+> comparar com `PORT_TIMEBASE=os`.
+
 Com HPET como fonte de relógio, o `ppu_timebase_now` custou 11–13% do `runTaskMain`. Quando a CPU tem `constant_tsc`
 e `nonstop_tsc`, leia o `rdtsc` direto e escale para os 79,8 MHz do timebase, calibrando uma vez no início. Sem TSC
 confiável, fica o caminho atual.
