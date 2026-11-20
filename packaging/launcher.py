@@ -393,6 +393,13 @@ def main():
                                     ('3', '3× (3840 × 2160)'), ('4', '4× (5120 × 2880)')],
                                    str(display.get('scale')), '1')
             render.add(self.scale)
+            # The game's own textures seen at a slant (the ground, walls); no measurable cost
+            # on the integrated Radeon of a Ryzen 5 4600H (docs/PERFORMANCE.md).
+            self.aniso = combo_row('Texture filtering', 'Sharper ground and walls at a distance; almost free',
+                                   [('16', 'Anisotropic 16×'), ('8', 'Anisotropic 8×'), ('4', 'Anisotropic 4×'),
+                                    ('2', 'Anisotropic 2×'), ('1', 'Original (as on the PS3)')],
+                                   str(display.get('aniso')), '16')
+            render.add(self.aniso)
             # By name: Vulkan's device order can change with drivers. Laptops
             # with two GPUs get the discrete one unless another is chosen.
             gpus = [('', 'Automatic (the dedicated GPU, if any)')] + [(n, n) for n in hardware_gpus(package.list_gpus())]
@@ -413,7 +420,7 @@ def main():
             perf.add(self.gamemode)
             if not WINDOWS:                  # MangoHud and GameMode are Linux tools
                 page.add(perf)
-            for row in (self.mode, self.size, self.filter, self.scale, self.gpu):
+            for row in (self.mode, self.size, self.filter, self.scale, self.aniso, self.gpu):
                 row.connect('notify::selected', lambda *_: self.settings_changed())
             self.hud.switch.connect('notify::active', lambda *_: self.settings_changed())
             self.gamemode.switch.connect('notify::active', lambda *_: self.settings_changed())
@@ -423,7 +430,7 @@ def main():
 
         def display_settings(self):
             return {'mode': self.mode.value(), 'size': self.size.value(), 'filter': self.filter.value(),
-                    'scale': self.scale.value(), 'gpu': self.gpu.value()}
+                    'scale': self.scale.value(), 'aniso': self.aniso.value(), 'gpu': self.gpu.value()}
 
         def settings_changed(self):
             self.size.set_sensitive(self.mode.value() != 'borderless')

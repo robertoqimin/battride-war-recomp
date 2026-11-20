@@ -393,6 +393,14 @@ mais longe (`engine/libs/video/`), então o trabalho é trazer módulos para os 
 
 ### G1: filtro anisotrópico (horas)
 
+> **Feito em 19/11.** `vulkan_bridge.c`: `samplerAnisotropy` ligado quando a GPU tem; `vk_aniso()` aplica
+> `maxAnisotropy` só a samplers com mips e filtro mínimo linear, nos dois caminhos (`vk_unit_sampler` e
+> `vk_eng_sampler`); sem mip (HUD, alvos de render, sombras) ou com point fica igual. `PORT_ANISO=1..16`, padrão 16,
+> limitado ao máximo da GPU; `1` desliga (o caminho de antes, sem nada mudado). Launcher: Settings, Rendering,
+> **Texture filtering** (16×, 8×, 4×, 2×, Original). Custo na Radeon integrada, STG02, pares: busy 18,33 contra 17,87
+> e 18,20 contra 17,98 ms (desligado contra 16×), GPU 26–27% ocupada nos dois: sem custo mensurável. Nos frames
+> salvos, o chão de terra ao fundo fica nítido em 16× e borrado sem; o HUD não muda.
+
 - **Origem:** `vk_postfx.c`, opção `PS3RECOMP_ANISO=1..16`, padrão 16.
 - **O que fazer:** aplicar `maxAnisotropy` nos samplers com mip e filtro linear. Point, comparação (shadow maps) e UI
   ficam como estão.

@@ -176,6 +176,8 @@ def profile_path_name(path):
 DISPLAY_MODES = ('windowed', 'borderless', 'fullscreen')
 DISPLAY_FILTERS = ('fsr', 'linear')
 RENDER_SCALES = ('1', '2', '3', '4')
+# Anisotropic filtering of slanted textures (vulkan_bridge.c, PORT_ANISO); 1 = off.
+ANISO_LEVELS = ('1', '2', '4', '8', '16')
 
 
 # Keyboard and mouse controls, in the order the launcher lists them, with
@@ -255,7 +257,7 @@ def controls_text(controls):
 
 
 def display_env(display):
-    """Environment for a {'mode', 'size', 'filter', 'scale'} choice; unknown values are dropped."""
+    """Environment for a {'mode', 'size', 'filter', 'scale', 'aniso'} choice; unknown values are dropped."""
     env = {}
     if display.get('mode') in DISPLAY_MODES:
         env['PORT_DISPLAY_MODE'] = display['mode']
@@ -266,6 +268,8 @@ def display_env(display):
         env['PORT_DISPLAY_FILTER'] = display['filter']
     if str(display.get('scale', '')) in RENDER_SCALES:
         env['PORT_RENDER_SCALE'] = str(display['scale'])
+    if str(display.get('aniso', '')) in ANISO_LEVELS:
+        env['PORT_ANISO'] = str(display['aniso'])
     return env
 
 

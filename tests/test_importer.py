@@ -256,6 +256,8 @@ class ImporterTests(unittest.TestCase):
             {'PORT_DISPLAY_MODE':'fullscreen','PORT_DISPLAY_SIZE':'2560x1440','PORT_DISPLAY_FILTER':'linear'})
         self.assertEqual(m.display_env({'mode':'evil; rm','size':'1920x1080 && x','filter':'?','scale':'8'}),{})
         self.assertEqual(m.display_env({'scale':'2'}),{'PORT_RENDER_SCALE':'2'})
+        self.assertEqual(m.display_env({'aniso':'16'}),{'PORT_ANISO':'16'})
+        self.assertEqual(m.display_env({'aniso':'3'}),{})
         self.assertEqual(m.display_env({}),{})
     def test_controls_text(self):
         text=m.controls_text({})

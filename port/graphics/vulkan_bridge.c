@@ -247,6 +247,7 @@ typedef struct vk_state {
     int              eng_active;      /* the register-file engine drives us */
     int              bc_ok;           /* textureCompressionBC enabled       */
     int              depth_bounds_ok; /* depthBounds enabled                */
+    float            aniso;           /* PORT_ANISO, 1 = off (vk_aniso)     */
     u32              max_dim;         /* maxImageDimension2D of the device  */
     int              windowed;
     SDL_Window*      window;
@@ -1072,6 +1073,18 @@ static VkSamplerAddressMode vk_gcm_wrap(u32 w)
  * [26:24]; SET_TEXTURE_CONTROL0 max LOD at [18:7], min LOD at [30:19], 4.8
  * fixed point. The LOD bias (FILTER [12:0]) is not applied, as in Metal.
  * VK_NULL_HANDLE on failure: the caller falls back to `sampler`. */
+/* Anisotropic filtering for a guest sampler: only one that blends mip levels
+ * of a linearly filtered texture -- the surfaces seen at a slant. Point
+ * filtering, textures without mips (the HUD, render targets, shadow maps) and
+ * PORT_ANISO=1 keep the guest's filter exactly. */
+static void vk_aniso(VkSamplerCreateInfo* sci, int mip_present, int min_linear)
+{
+    if (s_vk.aniso > 1.0f && mip_present && min_linear) {
+        sci->anisotropyEnable = VK_TRUE;
+        sci->maxAnisotropy = s_vk.aniso;
+    }
+}
+
 static VkSampler vk_unit_sampler(const rsx_texture_state* t)
 {
     const u32 minf = (t->filter >> 16) & 7u, magf = (t->filter >> 24) & 7u;
@@ -1099,6 +1112,7 @@ static VkSampler vk_unit_sampler(const rsx_texture_state* t)
         .minLod = min_lod, .maxLod = max_lod,
         .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
     };
+    vk_aniso(&sci, mip_present, sci.minFilter == VK_FILTER_LINEAR);
     VkSampler smp = VK_NULL_HANDLE;
     if (pvkCreateSampler(s_vk.device, &sci, NULL, &smp) != VK_SUCCESS) return VK_NULL_HANDLE;
     s_vk.samp_cache[s_vk.samp_count].key = key;
@@ -4470,6 +4484,7 @@ static VkSampler vk_eng_sampler(const rsx_be_sampler_desc* d)
         .addressModeW = vk_gcm_wrap(d->wrap_r),
         .minLod = min_lod, .maxLod = max_lod,
         .borderColor = vk_eng_border[border] };
+    vk_aniso(&sci, d->mip_present, d->min_linear);
     VkSampler smp;
     if (pvkCreateSampler(s_vk.device, &sci, NULL, &smp) != VK_SUCCESS) return s_vk.sampler;
     s_esamp[s_esamp_count].key = full_key;
@@ -4818,6 +4833,21 @@ static int vk_init_all(u32 width, u32 height, const char* title)
      * Vulkan; without it the test stays off, as before. */
     want.depthBounds = have.depthBounds;
     s_vk.depth_bounds_ok = have.depthBounds ? 1 : 0;
+    /* Anisotropic filtering of the guest's mipmapped, linearly filtered
+     * textures (vk_aniso): PORT_ANISO=1..16, 16 by default, 1 = off. */
+    s_vk.aniso = 1.0f;
+    if (have.samplerAnisotropy) {
+        const char* e = getenv("PORT_ANISO");
+        float a = e && *e ? (float)atof(e) : 16.0f;
+        VkPhysicalDeviceProperties p;
+        pvkGetPhysicalDeviceProperties(s_vk.phys, &p);
+        if (a > p.limits.maxSamplerAnisotropy) a = p.limits.maxSamplerAnisotropy;
+        if (a > 1.0f) {
+            want.samplerAnisotropy = VK_TRUE;
+            s_vk.aniso = a;
+        }
+    }
+    printf("[RSX vulkan] anisotropic filtering %s (%.0fx)\n", s_vk.aniso > 1.0f ? "on" : "off", s_vk.aniso);
     VkDeviceCreateInfo dci = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
                                .queueCreateInfoCount = 1, .pQueueCreateInfos = &qci,
                                .enabledExtensionCount = s_vk.windowed ? 1u : 0u,

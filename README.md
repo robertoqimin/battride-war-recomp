@@ -148,6 +148,8 @@ playing.
   <!-- TODO: measure 1x/2x/3x/4x again on 0.6.0; the old numbers were from v0.4.x. -->
 - **Upscaling:** AMD FidelityFX Super Resolution 1.0 or bilinear when the picture is shown larger than it was
   rendered.
+- **Texture filtering:** anisotropic filtering, 16× by default, sharpens the ground and walls seen at a slant; it
+  measured no cost on the integrated Radeon of a Ryzen 5 4600H. **Original** keeps the PS3's filtering.
 - The picture keeps 16:9, with black bars on other screen shapes.
 
 ## Performance
