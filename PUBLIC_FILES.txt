@@ -65,6 +65,8 @@ scripts/build/export_source.py
 scripts/build/generate.py
 scripts/build/lift_audio_spu.py
 scripts/build/pgo_relpaths.py
+scripts/build/ppu_lift_nv.py
+scripts/build/ppu_nv_dirty.py
 scripts/perf/frame_report.py
 scripts/perf/move_profiles.py
 scripts/perf/pgo_train.py

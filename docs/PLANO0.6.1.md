@@ -226,6 +226,16 @@ PPU da thread principal.
 
 ### Fase 1: registradores locais, o maior ganho esperado (1–2 dias)
 
+> **Em andamento, parada em 21/11 (a Premium veio primeiro; Parte 14).** Porte do passe, sem trocar o lifter:
+> `scripts/build/ppu_nv_dirty.py` (vendorizado sem mudanças) e `scripts/build/ppu_lift_nv.py`, que importa o lifter do
+> SDK fixado e acrescenta o passe depois de cada `lift_function`, o resumo de liveness vindo dos workers, o `solve` e o
+> `expand` na emissão. `PORT_PPU_NV=1` no `generate.py` (desligado por padrão; entra na chave do cache da U2);
+> `PORT_PPU_NV_VERIFY=1` gera a forma de verificação. No EBOOT: as mesmas 18.864 funções e 84 chunks, **nenhuma
+> mantida na forma original**, 11,7 de 36,8 milhões de write-backs mantidos (68% cortados), liveness em 11 rodadas;
+> o lift leva 494 s (86 s sem o passe). **Falta:** compilar a forma de verificação e jogar sem nenhum `[nv-verify]`,
+> depois o A/B. **Memória:** a forma de verificação com 4 jobs encheu RAM e swap e o systemd-oomd matou o app (20/11);
+> compilar com `-j2`.
+
 5. `PPU_NV_LOCALS` e `PPU_MM`, primeiro com `PPU_NV_VERIFY=1`.
 6. Somar `PPU_DRAIN_ELIDE`.
 7. `PPU_SO_ZERO` só depois de provar que o EBOOT nunca liga XER[SO]: procurar `mtxer`, `addo.`, `subfo.` e as outras

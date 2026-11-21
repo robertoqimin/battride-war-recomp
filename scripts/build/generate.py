@@ -58,7 +58,11 @@ def cache_key(sdk, elf_digest, dev_flash):
         add('capstone', version('capstone').encode())
     except Exception:
         add('capstone', b'unknown')
-    files = [ROOT / 'recompile.json', ROOT / 'scripts/build/generate.py', ROOT / 'scripts/build/lift_audio_spu.py']
+    files = [ROOT / 'recompile.json', ROOT / 'scripts/build/generate.py', ROOT / 'scripts/build/lift_audio_spu.py',
+             ROOT / 'scripts/build/ppu_lift_nv.py', ROOT / 'scripts/build/ppu_nv_dirty.py']
+    # The register-locals lift and its checking form give other sources.
+    for name in ('PORT_PPU_NV', 'PORT_PPU_NV_VERIFY', 'PPU_NV_LIVE', 'PPU_NV_VRALL', 'PPU_NV_FLAGS'):
+        add('env/' + name, os.environ.get(name, '').encode())
     files += sorted((ROOT / 'patches/ps3recomp').glob('*.patch'))
     for f in files:
         add(f.relative_to(ROOT).as_posix(), f.read_bytes())
@@ -188,7 +192,13 @@ def main():
         for path in (ppu, spu, analysis):
             path.mkdir(parents=True)
         run([sys.executable, sdk / 'tools/ppu_loader.py', elf, '-o', analysis])
-        run([sys.executable, sdk / 'tools/ppu_lifter.py', elf,
+        # PORT_PPU_NV=1: the SDK's lifter with the guest registers as C locals
+        # (scripts/build/ppu_lift_nv.py); the same functions and chunks.
+        if os.environ.get('PORT_PPU_NV', '0') not in ('', '0'):
+            lifter = [ROOT / 'scripts/build/ppu_lift_nv.py', '--sdk-tools', sdk / 'tools']
+        else:
+            lifter = [sdk / 'tools/ppu_lifter.py']
+        run([sys.executable, *lifter, elf,
              '--functions', analysis / 'EBOOT.functions.json',
              '--hle-stubs', analysis / 'EBOOT.imports.json', '--output', ppu,
              '--jobs', args.jobs, '--chunk-lines', '80000'])
