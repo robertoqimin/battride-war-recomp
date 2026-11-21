@@ -2132,14 +2132,18 @@ static ppu_fn ppu_lookup(uint32_t a)
 extern "C" uint32_t ppu_function_count(void) { return g_fn_count; }
 
 /* Correct native memmove override for the game's hand-optimized memmove at
- * guest 0x0036FA74. The lifted 1306-instruction version is mis-lifted (flagged
+ * guest PORT_GUEST_MEMMOVE (0x0036FA74 in BLJS10220; recompile.json, set by
+ * CMake). The lifted 1306-instruction version is mis-lifted (flagged
  * elsewhere as writing OPDs byte-swapped); it corrupts bulk copies -- notably a
  * std::vector element-shift (func_0007D78C) that CLOBBERS a C++ object's vtable
  * pointer with an off-by-0x20 value (0x520BC4 -> 0x520BE4, whose slot[4] is null),
  * causing the func_003DAA58 double-dispatch crash. ABI: r3=dst, r4=src, r5=size;
  * returns dst in r3 (memcpy convention). This is a REAL correctness fix (a valid
  * memmove replacing a broken lift), not a shim. */
-extern "C" void ydkj_memmove_0036FA74(ppu_context* ctx)
+#ifndef PORT_GUEST_MEMMOVE
+#error "PORT_GUEST_MEMMOVE: the guest address of the game's memmove (set by CMake)"
+#endif
+extern "C" void ydkj_memmove_native(ppu_context* ctx)
 {
     uint32_t dst = (uint32_t)ctx->gpr[3];
     uint32_t src = (uint32_t)ctx->gpr[4];
@@ -2166,8 +2170,8 @@ extern "C" void ppu_recomp_register(void)
         ppu_register_function(function_table[i].addr, function_table[i].func);
     /* Override the mis-lifted optimized memmove with a correct native one. */
     if (getenv("YDKJ_MEMFIX")) {
-        ppu_register_function(0x0036FA74u, ydkj_memmove_0036FA74);
-        fprintf(stderr, "[ppu] YDKJ_MEMFIX: overrode func_0036FA74 with native memmove\n");
+        ppu_register_function((uint32_t)PORT_GUEST_MEMMOVE, ydkj_memmove_native);
+        fprintf(stderr, "[ppu] YDKJ_MEMFIX: overrode func_%08X with native memmove\n", (unsigned)PORT_GUEST_MEMMOVE);
     }
 }
 

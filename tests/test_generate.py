@@ -89,5 +89,43 @@ class GenerateCacheTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             g.hook_graphics_buffers(ppu, '0x00000999')
 
+    def test_the_edition_names_the_native_code(self):
+        ppu = self.dir / 'recomp'
+        ppu.mkdir()
+        (ppu / 'ppu_recomp_000.cpp').write_text('void func_00000100(ppu_context* ctx) {\n}\n'
+                                                'void func_00000200(ppu_context* ctx) {\n}\n')
+        edition = {'title_id': 'BLJS10219', 'memmove': '0x3712F4'}
+        g.chunk_map(ppu, {'native_lookup': 'func_00000100', 'frame_limiter': 'func_00000200'}, edition)
+        text = (ppu / 'port_chunks.cmake').read_text()
+        self.assertIn('set(PORT_TITLE_ID "BLJS10219")', text)
+        self.assertIn('set(PORT_FN_NATIVE_LOOKUP "func_00000100")', text)
+        self.assertIn('set(PORT_FN_FRAME_LIMITER "func_00000200")', text)
+        self.assertIn('set(PORT_GUEST_MEMMOVE "0x003712F4")', text)
+
+
+class EditionTests(unittest.TestCase):
+    spec = json.loads((Path(__file__).resolve().parents[1] / 'recompile.json').read_text())
+
+    def test_each_edition_is_found_by_its_eboot(self):
+        hashes = [e['eboot_sha256'] for e in self.spec['editions']]
+        self.assertEqual(len(set(hashes)), len(hashes))
+        self.assertEqual([e['title_id'] for e in self.spec['editions']], ['BLJS10220', 'BLJS10219'])
+        for e in self.spec['editions']:
+            self.assertIs(g.edition_for(self.spec, e['eboot_sha256']), e)
+        self.assertIsNone(g.edition_for(self.spec, '0' * 64))
+
+    def test_each_edition_names_what_the_port_tunes(self):
+        for e in self.spec['editions']:
+            a = e['chunk_anchors']
+            self.assertEqual(set(a), set(g.CHUNK_VARS), e['title_id'])
+            names = [a['native_lookup'], a['frame_limiter'], a['hot_o3'], a['flags_unit'], *a['fast_memory']]
+            for name in names:
+                self.assertRegex(name, r'^func_[0-9A-F]{8}$')
+            self.assertEqual(a['hot_o3'], a['native_lookup'])
+            self.assertIn(a['native_lookup'], a['fast_memory'])
+            self.assertIn(a['flags_unit'], a['fast_memory'])
+            for key in ('arena_hook_return', 'memmove'):
+                self.assertRegex(e[key], r'^0x[0-9A-F]{8}$')
+
 if __name__ == '__main__':
     unittest.main()

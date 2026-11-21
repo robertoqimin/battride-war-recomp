@@ -151,8 +151,8 @@ def main():
     binary = build / ('kamenriderbattridewarsport.exe' if WINDOWS else 'kamenriderbattridewarsport')
     spec = json.loads((ROOT / 'recompile.json').read_text())
     elf = hashlib.sha256((ROOT / 'game/EBOOT.ELF').read_bytes()).hexdigest()
-    if elf != spec['eboot_sha256']:
-        raise SystemExit('game/EBOOT.ELF is not the decrypted BLJS10220 EBOOT this port expects.')
+    if elf not in {e['eboot_sha256'] for e in spec['editions']}:
+        raise SystemExit('game/EBOOT.ELF is not a decrypted EBOOT this port supports (recompile.json, editions).')
     if profiles.exists() and any(profiles.rglob('*.gcda')):
         raise SystemExit('Profiles already exist in %s; move them away to start over.' % profiles)
     for n in range(args.sessions):

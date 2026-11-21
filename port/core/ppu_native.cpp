@@ -15,7 +15,15 @@
 #include <cstdlib>
 #include <cstring>
 
-void port_lifted_func_004B5120(ppu_context* ctx);
+/* The function's name in this edition's lift (func_004B5120 in BLJS10220;
+ * recompile.json, set by CMake). */
+#ifndef PORT_FN_NATIVE_LOOKUP
+#error "PORT_FN_NATIVE_LOOKUP: the lifted name of the native lookup (set by CMake)"
+#endif
+#define PORT_STR_(x) #x
+#define PORT_STR(x) PORT_STR_(x)
+
+void port_lifted_native_lookup(ppu_context* ctx);
 
 namespace {
 
@@ -39,7 +47,7 @@ int native_mode()
  * null link reads as 1, the end. 22.5% of the runTaskMain thread in STG02
  * combat when lifted: every step stored the current entry to sp-4 and loaded
  * it back, and stored 1 to sp-0xC, through the guarded accessors. */
-void native_004B5120(ppu_context* ctx)
+void native_lookup(ppu_context* ctx)
 {
     uint64_t r0 = ctx->gpr[0], r3 = ctx->gpr[3], r5 = ctx->gpr[5], r6 = ctx->gpr[6];
     uint64_t r7 = ctx->gpr[7], r8 = ctx->gpr[8], r9 = ctx->gpr[9], r10;
@@ -138,11 +146,11 @@ void check(const char* name, void (*lifted)(ppu_context*), void (*native)(ppu_co
 
 }  // namespace
 
-void func_004B5120(ppu_context* ctx)
+void PORT_FN_NATIVE_LOOKUP(ppu_context* ctx)
 {
     switch (native_mode()) {
-    case 1:  native_004B5120(ctx); break;
-    case 0:  port_lifted_func_004B5120(ctx); break;
-    default: check("func_004B5120", port_lifted_func_004B5120, native_004B5120, ctx); break;
+    case 1:  native_lookup(ctx); break;
+    case 0:  port_lifted_native_lookup(ctx); break;
+    default: check(PORT_STR(PORT_FN_NATIVE_LOOKUP), port_lifted_native_lookup, native_lookup, ctx); break;
     }
 }

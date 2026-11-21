@@ -66,6 +66,8 @@ for d in ('app','usr/bin','usr/lib','usr/share/glib-2.0/schemas'):(S/d).mkdir(pa
 for n in ('importer.py','launcher.py'):copy(P/'packaging'/n,S/'app'/n)
 copy(P/'CREDITS.md',S/'app/CREDITS.md')
 spec=json.loads((P/'recompile.json').read_text())
+# The package is built for the normal edition for now (docs/PLANO0.6.1.md, E3/E4).
+edition=spec['editions'][0]
 # The port's public sources, exactly as the source export allowlist names them.
 public=[l.strip() for l in (P/'PUBLIC_FILES.txt').read_text().splitlines() if l.strip() and not l.startswith('#')]
 for n in public:
@@ -89,7 +91,7 @@ appimage_toolchain.assemble(S/'usr/toolchain')
 if args.pgo:
     info=json.loads((args.pgo/'profile.json').read_text())
     gcc=subprocess.check_output([str(S/'usr/toolchain/sysroot/usr/bin/x86_64-linux-gnu-g++-11'),'-dumpfullversion'],text=True).strip()
-    if (info['gcc'],info['sdk_commit'],info['eboot_sha256'])!=(gcc,spec['sdk_commit'],spec['eboot_sha256']):
+    if (info['gcc'],info['sdk_commit'],info['eboot_sha256'])!=(gcc,spec['sdk_commit'],edition['eboot_sha256']):
         raise SystemExit('The profiles in %s were trained with GCC %s, SDK %s; this build uses GCC %s, SDK %s.'
                          %(args.pgo,info['gcc'],info['sdk_commit'],gcc,spec['sdk_commit']))
     files=sorted(args.pgo.rglob('*.gcda'))
@@ -172,7 +174,7 @@ for p in sorted((P/'game/PS3_GAME').rglob('*')):
 p=P/'game/PS3_DISC.SFB'
 if p.exists():manifest['PS3_DISC.SFB']={'size':p.stat().st_size,'sha256':sha(p)}
 (S/'app/disc-manifest.json').write_text(json.dumps(manifest,separators=(',',':')))
-meta={'version':'0.6.0','glibc_min':'2.35','cpu':'built on the player computer, -march=native','elf_sha256':spec['eboot_sha256'],
+meta={'version':'0.6.0','glibc_min':'2.35','cpu':'built on the player computer, -march=native','elf_sha256':edition['eboot_sha256'],
       'sdk_commit':spec['sdk_commit'],'rpcs3':json.loads((P/'packaging/linux/rpcs3.json').read_text()),'codecs':{p.name:sha(p) for p in (P/'firmware/dev_flash/sys/external').glob('*.pic')},
       'game_libs':game_libs,'sevenzip_sha256':sha(S/'usr/bin/7z'),'runtime_sha256':sha(args.runtime),'pgo':args.pgo is not None}
 (S/'app/package.json').write_text(json.dumps(meta,indent=2));(S/'app/library-sources.json').write_text(json.dumps(bom,indent=2))

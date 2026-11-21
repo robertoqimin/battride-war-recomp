@@ -41,14 +41,22 @@ def hook_graphics_buffers(ppu, ret):
     with open(path, 'w', newline='') as f:
         f.write('\n'.join(lines))
 
-# Where the functions the port tunes landed (recompile.json, chunk_anchors), for
-# CMake: the lifter splits the code into chunks by size, so their numbers change
-# with the EBOOT (another edition) or the lifter. src/recomp/port_chunks.cmake.
+# Where the functions the port tunes landed (recompile.json, an edition's
+# chunk_anchors), for CMake: the lifter splits the code into chunks by size, so
+# their numbers change with the EBOOT (another edition) or the lifter. With them,
+# the edition's names and addresses for the native code (port_ppu_native.h,
+# port_frame_limiter.h, the memmove of loader_bridge.cpp).
+# src/recomp/port_chunks.cmake.
 CHUNK_VARS = {'native_lookup': 'PORT_CHUNK_NATIVE_LOOKUP', 'frame_limiter': 'PORT_CHUNK_FRAME_LIMITER',
               'hot_o3': 'PORT_CHUNK_HOT_O3', 'flags_unit': 'PORT_CHUNK_FLAGS_UNIT',
               'fast_memory': 'PORT_CHUNKS_FAST_MEMORY'}
 
-def chunk_map(ppu, anchors):
+def edition_for(spec, digest):
+    """The recompile.json edition whose decrypted EBOOT has this SHA-256, or None."""
+    return next((e for e in spec['editions'] if e['eboot_sha256'] == digest), None)
+
+
+def chunk_map(ppu, anchors, edition=None):
     want = {name for v in anchors.values() for name in (v if isinstance(v, list) else [v])}
     where = {}
     for path in sorted(ppu.glob('ppu_recomp_*.cpp')):
@@ -71,6 +79,11 @@ def chunk_map(ppu, anchors):
         chunks = sorted(set(where[n] for n in names))
         out.append('set(%s "%s")' % (var, ';'.join(chunks)))
         out.append('set(%s_FUNCS "%s")' % (var, ';'.join(names)))
+    if edition:
+        out.append('set(PORT_TITLE_ID "%s")' % edition['title_id'])
+        out.append('set(PORT_FN_NATIVE_LOOKUP "%s")' % anchors['native_lookup'])
+        out.append('set(PORT_FN_FRAME_LIMITER "%s")' % anchors['frame_limiter'])
+        out.append('set(PORT_GUEST_MEMMOVE "0x%08X")' % int(edition['memmove'], 16))
     (ppu / 'port_chunks.cmake').write_text('\n'.join(out) + '\n')
     return where
 
@@ -197,12 +210,15 @@ def main():
         for block in iter(lambda: stream.read(1024 * 1024), b''):
             value.update(block)
         digest = value.hexdigest()
-    if digest != spec['eboot_sha256']:
-        ap.error('EBOOT SHA-256 mismatch: this port is specific to the documented BLJS10220 build')
+    edition = edition_for(spec, digest)
+    if not edition:
+        ap.error('EBOOT SHA-256 mismatch: this port supports only the documented builds of '
+                 + ', '.join(e['title_id'] for e in spec['editions']))
+    print('Edition: %s (%s)' % (edition['name'], edition['title_id']))
     if args.jobs < 1:
         ap.error('--jobs must be positive')
     if args.verify_only:
-        print('OK: pinned SDK and matching EBOOT; no files generated')
+        print('OK: pinned SDK and matching EBOOT (%s); no files generated' % edition['title_id'])
         return
     destinations = [ROOT / name for name in GENERATED]
     for path in destinations:
@@ -239,10 +255,9 @@ def main():
              '--functions', analysis / 'EBOOT.functions.json',
              '--hle-stubs', analysis / 'EBOOT.imports.json', '--output', ppu,
              '--jobs', args.jobs, '--chunk-lines', '80000'])
-        hook_graphics_buffers(ppu, spec.get('arena_hook_return', '0x0045BC64'))
+        hook_graphics_buffers(ppu, edition['arena_hook_return'])
         pin_vm_base(ppu)
-        if spec.get('chunk_anchors'):
-            chunk_map(ppu, spec['chunk_anchors'])
+        chunk_map(ppu, edition['chunk_anchors'], edition)
         run([sys.executable, sdk / 'tools/build_spu_workloads.py', '--input', elf,
              '--lifted', spu, '--out', spu / 'spu_workloads.c', '--constructor', '--allow-partial'])
         inventory = json.loads((spu / 'inventory.json').read_text())
@@ -256,8 +271,10 @@ def main():
         if dev_flash.is_dir():
             audio += ['--dev-flash', dev_flash]
         run(audio)
-        if len(list(ppu.glob('ppu_recomp_*.cpp'))) != spec['ppu_chunks']:
+        chunks = len(list(ppu.glob('ppu_recomp_*.cpp')))
+        if edition.get('ppu_chunks') is not None and chunks != edition['ppu_chunks']:
             raise RuntimeError('unexpected PPU chunk layout; generated sources were not installed')
+        print('PPU chunks: %d' % chunks)
         # Keep the generated CMake source list useful after moving the stage.
         cmake = spu / 'sources.cmake'
         cmake.write_text(cmake.read_text().replace(str(spu), str(ROOT / 'spu')))

@@ -78,9 +78,14 @@ list(LENGTH RECOMP_SOURCES RECOMP_SOURCE_COUNT)
 message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 
 # The chunks that hold the functions this port tunes, found by
-# scripts/build/generate.py (recompile.json, chunk_anchors): the lifter splits
-# the code by size, so the numbers follow the EBOOT. A tree generated before
-# that file existed gets the BLJS10220 numbers.
+# scripts/build/generate.py (recompile.json, the edition's chunk_anchors): the
+# lifter splits the code by size, so the numbers follow the EBOOT. With them the
+# edition's names and addresses for the native code. A tree generated before
+# that file existed gets the BLJS10220 values.
+set(PORT_TITLE_ID "BLJS10220")
+set(PORT_FN_NATIVE_LOOKUP "func_004B5120")
+set(PORT_FN_FRAME_LIMITER "func_003ABE20")
+set(PORT_GUEST_MEMMOVE "0x0036FA74")
 set(PORT_CHUNK_NATIVE_LOOKUP "029")
 set(PORT_CHUNK_FRAME_LIMITER "013")
 set(PORT_CHUNK_HOT_O3 "029")
@@ -90,6 +95,7 @@ include("${RECOMP_DIR}/port_chunks.cmake" OPTIONAL RESULT_VARIABLE port_chunks_f
 if(port_chunks_file)
     message(STATUS "Tuned chunks:    ${PORT_CHUNKS_FAST_MEMORY} (from port_chunks.cmake)")
 endif()
+message(STATUS "Edition:         ${PORT_TITLE_ID}")
 
 # ---------------------------------------------------------------------------
 # Target CPU
@@ -528,9 +534,12 @@ install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
 
 set_source_files_properties("${PORT_SRC}/spu/spu_bridge.c" PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu;${SPU_DIR}")
 
+# The guest address of the game's memmove, which YDKJ_MEMFIX replaces (the edition's, from port_chunks.cmake).
+set_property(SOURCE "${PORT_SRC}/core/loader_bridge.cpp" APPEND PROPERTY COMPILE_DEFINITIONS "PORT_GUEST_MEMMOVE=${PORT_GUEST_MEMMOVE}u")
+
 set_source_files_properties("${PORT_SRC}/io/fs_bridge.cpp" PROPERTIES COMPILE_DEFINITIONS "PORT_PPU_FS_SOURCE=\"${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp\"")
 
-# The combat CPU profile identifies func_004B5120 (tree traversal) as a hot
+# The combat CPU profile identifies func_004B5120 (tree traversal; BLJS10220) as a hot
 # PPU path (its chunk: PORT_CHUNK_HOT_O3). Optimize that translation unit more aggressively,
 # keeping the rest at the preset's O2 and preserving strict FP contraction.
 option(PORT_HOT_PPU_O3 "Use O3 for the profiled hot PPU chunk" ON)
@@ -566,15 +575,17 @@ if(PORT_PPU_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 
     set(source "${RECOMP_DIR}/ppu_recomp_${PORT_PPU_NATIVE_CHUNK}.cpp")
     set(native_defined "")
     if(EXISTS "${source}")
-        file(STRINGS "${source}" native_defined REGEX "^void func_004B5120\\(ppu_context\\* ctx\\) {")
+        file(STRINGS "${source}" native_defined REGEX "^void ${PORT_FN_NATIVE_LOOKUP}\\(ppu_context\\* ctx\\) {")
     endif()
     if(native_defined)
         set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS
             "-include" "${CMAKE_CURRENT_SOURCE_DIR}/include/port_ppu_native.h")
+        set_property(SOURCE "${source}" "${PORT_SRC}/core/ppu_native.cpp" APPEND PROPERTY
+            COMPILE_DEFINITIONS "PORT_FN_NATIVE_LOOKUP=${PORT_FN_NATIVE_LOOKUP}")
         target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/ppu_native.cpp")
-        message(STATUS "Native PPU:      func_004B5120 (chunk ${PORT_PPU_NATIVE_CHUNK})")
+        message(STATUS "Native PPU:      ${PORT_FN_NATIVE_LOOKUP} (chunk ${PORT_PPU_NATIVE_CHUNK})")
     else()
-        message(STATUS "Native PPU:      off (func_004B5120 not in chunk ${PORT_PPU_NATIVE_CHUNK})")
+        message(STATUS "Native PPU:      off (${PORT_FN_NATIVE_LOOKUP} not in chunk ${PORT_PPU_NATIVE_CHUNK})")
     endif()
 endif()
 # The game's frame limiter, timed: busy_ms in PORT_FRAME_TIMES is the frame
@@ -586,15 +597,17 @@ if(PORT_FRAME_LIMITER_WRAP AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NO
     set(source "${RECOMP_DIR}/ppu_recomp_${PORT_FRAME_LIMITER_CHUNK}.cpp")
     set(limiter_defined "")
     if(EXISTS "${source}")
-        file(STRINGS "${source}" limiter_defined REGEX "^void func_003ABE20\\(ppu_context\\* ctx\\) {")
+        file(STRINGS "${source}" limiter_defined REGEX "^void ${PORT_FN_FRAME_LIMITER}\\(ppu_context\\* ctx\\) {")
     endif()
     if(limiter_defined)
         set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS
             "-include" "${CMAKE_CURRENT_SOURCE_DIR}/include/port_frame_limiter.h")
+        set_property(SOURCE "${source}" "${PORT_SRC}/core/frame_limiter.cpp" APPEND PROPERTY
+            COMPILE_DEFINITIONS "PORT_FN_FRAME_LIMITER=${PORT_FN_FRAME_LIMITER}")
         target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/frame_limiter.cpp")
-        message(STATUS "Frame limiter:   timed (func_003ABE20, chunk ${PORT_FRAME_LIMITER_CHUNK})")
+        message(STATUS "Frame limiter:   timed (${PORT_FN_FRAME_LIMITER}, chunk ${PORT_FRAME_LIMITER_CHUNK})")
     else()
-        message(STATUS "Frame limiter:   not timed (func_003ABE20 not in chunk ${PORT_FRAME_LIMITER_CHUNK})")
+        message(STATUS "Frame limiter:   not timed (${PORT_FN_FRAME_LIMITER} not in chunk ${PORT_FRAME_LIMITER_CHUNK})")
     endif()
 endif()
 # The same fast path for every other translated store, out of line: the

@@ -61,6 +61,8 @@ for exe in ('gcc.exe', 'clang.exe', 'g++.exe', 'cmake.exe', 'ninja.exe', 'objdum
     if not (tools / exe).is_file():
         raise SystemExit('MSYS2 UCRT64 tool missing: ' + str(tools / exe))
 spec = json.loads((P / 'recompile.json').read_text())
+# The package is built for the normal edition for now (docs/PLANO0.6.1.md, E3/E4).
+edition = spec['editions'][0]
 
 
 def sha(p):
@@ -185,7 +187,7 @@ pgo = False
 if args.pgo:
     info = json.loads((args.pgo / 'profile.json').read_text())
     gcc = subprocess.check_output([str(tools / 'g++.exe'), '-dumpfullversion'], text=True).strip()
-    if (info['gcc'], info['sdk_commit'], info['eboot_sha256']) != (gcc, spec['sdk_commit'], spec['eboot_sha256']):
+    if (info['gcc'], info['sdk_commit'], info['eboot_sha256']) != (gcc, spec['sdk_commit'], edition['eboot_sha256']):
         raise SystemExit('The profiles in %s were trained with GCC %s, SDK %s; this build uses GCC %s, SDK %s.'
                          % (args.pgo, info['gcc'], info['sdk_commit'], gcc, spec['sdk_commit']))
     files = sorted(args.pgo.rglob('*.gcda'))
@@ -218,7 +220,7 @@ if p.exists():
     manifest['PS3_DISC.SFB'] = {'size': p.stat().st_size, 'sha256': sha(p)}
 (S / 'app/disc-manifest.json').write_text(json.dumps(manifest, separators=(',', ':')))
 meta = {'version': '0.6.0-windows', 'cpu': 'built on the player computer, -march=native',
-        'elf_sha256': spec['eboot_sha256'], 'sdk_commit': spec['sdk_commit'],
+        'elf_sha256': edition['eboot_sha256'], 'sdk_commit': spec['sdk_commit'],
         'rpcs3': json.loads((P / 'packaging/windows/rpcs3-windows.json').read_text()),
         'codecs': {p.name: sha(p) for p in (P / 'firmware/dev_flash/sys/external').glob('*.pic')},
         'game_libs': [], 'sevenzip_sha256': sha(S / 'usr/bin/7z.exe'), 'pgo': pgo}

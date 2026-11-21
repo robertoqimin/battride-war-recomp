@@ -992,6 +992,16 @@ Edition (Japan).iso`), descriptografado com o RPCS3 fixado.
   fixo `func_004B5120` etc. O código nativo da busca não usa endereços do guest, só deslocamentos de estrutura:
   confirmar no `=check`.
 
+> **Feito em 21/11.** O `recompile.json` tem uma lista `editions`, cada uma com título, hash, chunks esperados
+> (`null` na Premium até a primeira tradução), gancho, `memmove` e `chunk_anchors`. Os endereços da Premium foram
+> achados pelos bytes das funções no EBOOT dela, cada um com um acerto só: busca `0x004B69A0`, limitador `0x003AD6A0`,
+> gancho `0x0045D4E4`, `memmove` `0x003712F4`, e os fast paths `0x0042EA08`, `0x004AAF60`, `0x005C922C`,
+> `0x0052BDB8`. O `generate.py` escolhe a edição pelo hash e grava no `port_chunks.cmake` o título, os nomes
+> `PORT_FN_NATIVE_LOOKUP` e `PORT_FN_FRAME_LIMITER` e o `PORT_GUEST_MEMMOVE`. O CMake passa esses valores por
+> macro para `port_ppu_native.h`, `port_frame_limiter.h`, `ppu_native.cpp`, `frame_limiter.cpp` e
+> `loader_bridge.cpp`. Sem o valor, eles não compilam (`#error`). O `pgo_train.py` aceita as duas edições; os pacotes
+> continuam montados para a edição normal até a E3/E4. Falta, na E5, o `PORT_PPU_NATIVE=check` na Premium.
+
 ### E2: chunks achados pelo `generate.py` (meio dia)
 
 Hoje o CMake fixa os chunks: 013 (limitador), 029 (busca nativa e `-O3`), 015/017/021/029/030 (fast paths de memória).

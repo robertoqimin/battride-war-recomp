@@ -1,24 +1,51 @@
 {
-  "title_id": "BLJS10220",
   "sdk_repository": "https://github.com/sp00nznet/ps3recomp.git",
   "sdk_commit": "a6d76c895f77eb30b90a806c830544e61821b77f",
-  "eboot_sha256": "a53b7bca5d47490710ba02af5f885e1219d10c7a1a456fcf6e13a48db668a014",
-  "ppu_chunks": 84,
   "registered_spu_sha256": [
     "615f01318fb1c02fbb03cd0fdca61b2144aaed4846bb2fc12fe4ca8fe2dc0657"
   ],
-  "arena_hook_return": "0x0045BC64",
-  "chunk_anchors": {
-    "native_lookup": "func_004B5120",
-    "frame_limiter": "func_003ABE20",
-    "hot_o3": "func_004B5120",
-    "flags_unit": "func_004A96E0",
-    "fast_memory": [
-      "func_0042D188",
-      "func_004A96E0",
-      "func_005C79B4",
-      "func_004B5120",
-      "func_0052A540"
-    ]
-  }
+  "editions": [
+    {
+      "title_id": "BLJS10220",
+      "name": "Kamen Rider Battride War",
+      "eboot_sha256": "a53b7bca5d47490710ba02af5f885e1219d10c7a1a456fcf6e13a48db668a014",
+      "ppu_chunks": 84,
+      "arena_hook_return": "0x0045BC64",
+      "memmove": "0x0036FA74",
+      "chunk_anchors": {
+        "native_lookup": "func_004B5120",
+        "frame_limiter": "func_003ABE20",
+        "hot_o3": "func_004B5120",
+        "flags_unit": "func_004A96E0",
+        "fast_memory": [
+          "func_0042D188",
+          "func_004A96E0",
+          "func_005C79B4",
+          "func_004B5120",
+          "func_0052A540"
+        ]
+      }
+    },
+    {
+      "title_id": "BLJS10219",
+      "name": "Kamen Rider Battride War Premium TV Sound Edition",
+      "eboot_sha256": "72e1e4cb19f467358e6c25e8b09b6fb0c6a0f230f4ef8bd6427470fcbb4e01d8",
+      "ppu_chunks": null,
+      "arena_hook_return": "0x0045D4E4",
+      "memmove": "0x003712F4",
+      "chunk_anchors": {
+        "native_lookup": "func_004B69A0",
+        "frame_limiter": "func_003AD6A0",
+        "hot_o3": "func_004B69A0",
+        "flags_unit": "func_004AAF60",
+        "fast_memory": [
+          "func_0042EA08",
+          "func_004AAF60",
+          "func_005C922C",
+          "func_004B69A0",
+          "func_0052BDB8"
+        ]
+      }
+    }
+  ]
 }
