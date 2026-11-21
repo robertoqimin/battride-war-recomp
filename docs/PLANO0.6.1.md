@@ -5,7 +5,7 @@
 Repositório alvo: [robertoqimin/battride-war-recomp](https://github.com/robertoqimin/battride-war-recomp) (partindo da v0.6.0, SDK `sp00nznet/ps3recomp@a6d76c8`).
 Referência: [SamiEnazi/infamous2-port](https://github.com/SamiEnazi/infamous2-port) (v0.6.3).
 
-Este documento junta oito coisas:
+Este documento junta nove coisas:
 
 1. Como o port do inFAMOUS 2 funciona, como referência.
 2. O que trazer dele para o Battride: otimizações do lifter PPU e melhorias gráficas.
@@ -17,6 +17,7 @@ Este documento junta oito coisas:
    por que a primeira compilação não pode sumir.
 7. O tamanho dos pacotes: 707 MB no Windows e 235 MB no AppImage, contra cerca de 50 MB no infamous2.
 8. A interface do launcher: as páginas passam das abas para uma sidebar à esquerda.
+9. A Premium TV Sound Edition (BLJS10219), pedida na issue #3.
 
 No fim há uma ordem única de execução.
 
@@ -40,7 +41,8 @@ No fim há uma ordem única de execução.
 - [Parte 10: atualizações sem recompilar tudo (U1 a U6)](#parte-10-atualizações-sem-recompilar-tudo-u1-a-u6)
 - [Parte 11: tamanho dos pacotes (S1 a S3)](#parte-11-tamanho-dos-pacotes-s1-a-s3)
 - [Parte 12: interface do launcher (L1)](#parte-12-interface-do-launcher-l1)
-- [Parte 13: ordem única de execução](#parte-13-ordem-única-de-execução)
+- [Parte 13: Premium TV Sound Edition, BLJS10219 (E1 a E5)](#parte-13-premium-tv-sound-edition-bljs10219-e1-a-e5)
+- [Parte 14: ordem única de execução](#parte-14-ordem-única-de-execução)
 
 ---
 
@@ -942,7 +944,74 @@ Trocar as abas por uma **sidebar fixa à esquerda**, com ícone e nome de cada p
 
 ---
 
-## Parte 13: ordem única de execução
+## Parte 13: Premium TV Sound Edition, BLJS10219 (E1 a E5)
+
+Pedida na [issue #3](https://github.com/robertoqimin/battride-war-recomp/issues/3): a edição que troca a trilha pelas
+músicas originais dos seriados. Verificado em 20/11 com o disco (`Kamen Rider - Battride War - Premium TV Sound
+Edition (Japan).iso`), descriptografado com o RPCS3 fixado.
+
+### O que a comparação mostrou
+
+- **Dados do disco:** dos 21.116 arquivos do BLJS10220, 21.112 são iguais byte a byte; mudam só `PS3_DISC.SFB`,
+  `LIC.DAT`, `PARAM.SFO` (título BLJS10219) e `EBOOT.BIN`. A Premium acrescenta 98 arquivos (61 MB): 58 músicas em
+  `sound/BGM/PREMIUM/` (`ORG_AGI_1.msf`...), no mesmo MSF/MP3 (`MSFC`, codec 7) da trilha normal, e a interface
+  `ui/ptse/` e `seq/ui/ptse/` (tela de título e menu "Custom Soundtrack"). Os troféus são os mesmos (`NPWR04425_00`).
+- **EBOOT descriptografado:** SHA-256 `72e1e4cb19f467358e6c25e8b09b6fb0c6a0f230f4ef8bd6427470fcbb4e01d8`, 336 bytes
+  maior. O segmento de código tem 7.808 bytes a mais (`0x6897e8` → `0x68b668`), o de dados 0x150. **É o mesmo
+  programa com cerca de 6 KB de código inserido no começo** (quase certamente o menu da trilha): o resto está deslocado
+  em +6.272 bytes, e mais adiante +6.264, com os mesmos bytes.
+- **O que o port ajustou à mão existe intacto, em outro endereço:**
+
+  | | BLJS10220 | BLJS10219 |
+  |---|---|---|
+  | `func_004B5120` (busca nativa, `ppu_native.cpp`) | `0x004B5120` | `0x004B69A0` |
+  | `func_003ABE20` (limitador, F1) | `0x003ABE20` | `0x003AD6A0` |
+  | gancho do buffer gráfico (`generate.py`) | `0x0045BC64` | `0x0045D4E4` |
+  | `memmove` nativo (`loader_bridge.cpp`) | `0x0036FA74` | `0x003712F4` |
+  | `func_003C4148` (timebase), `func_005B2930`, `func_005C79B4` | | +6.272, +6.264, +6.264 |
+
+- **Programas SPU:** os dois embutidos são idênticos (o registrado `615f0131…` e o da tarefa de áudio `e33837bb…`), então
+  a tradução do áudio vale como está. O endereço SPU `0x00026E80` do `spu_interp_bridge.c` não muda.
+
+### E1: um perfil por edição (cerca de 1 dia)
+
+- O `recompile.json` passa a ter uma entrada por EBOOT: hash, título, número de chunks PPU e os endereços acima. O
+  `generate.py` escolhe a entrada pelo hash do EBOOT e usa o endereço do gancho dela.
+- `ppu_native.cpp`, `frame_limiter.cpp`, `port_ppu_native.h`, `port_frame_limiter.h` e o `memmove` do
+  `loader_bridge.cpp` passam a receber o endereço por macro (definida pelo CMake a partir do perfil), em vez do nome
+  fixo `func_004B5120` etc. O código nativo da busca não usa endereços do guest, só deslocamentos de estrutura:
+  confirmar no `=check`.
+
+### E2: chunks achados pelo `generate.py` (meio dia)
+
+Hoje o CMake fixa os chunks: 013 (limitador), 029 (busca nativa e `-O3`), 015/017/021/029/030 (fast paths de memória).
+Com 6 KB a mais de código a divisão muda. O `generate.py` grava num `port_chunks.cmake` em que chunk ficou cada função
+que o port ajusta, e os chunks quentes passam a ser definidos pelas funções que contêm, não pelo número. Vale também
+para a edição normal: deixa o port mais robusto a qualquer mudança do lifter.
+
+### E3: importer e dados (cerca de 1 dia)
+
+- Dois manifestos de disco (ou um por título) e o importer reconhecendo os dois ISOs.
+- O título BLJS10219 nos saves (`BLJS10219...`) e nos dados que o jogo instala; conferir no `PARAM.SFO` e no
+  `cellGame` o nome da pasta de dados.
+- O launcher mostra qual edição foi importada.
+
+### E4: perfis de PGO (horas)
+
+Os perfis são por chunk e por função: os da edição normal não casam com os chunks da Premium. Um segundo conjunto,
+treinado do mesmo jeito (5 minutos), e o pacote escolhe pelo hash do EBOOT (o `profile.json` já registra o EBOOT).
+
+### E5: testes (1 a 2 dias)
+
+- O código novo do menu "Custom Soundtrack" nunca rodou no port: pode pedir HLE (por exemplo, leitura da lista de
+  músicas) que ainda não existe.
+- STG02 e o primeiro estágio de cada capítulo, com as músicas originais tocando; a sessão de 30 minutos.
+- A edição normal sem regressão.
+
+**Esforço total: 3 a 5 dias.** Não precisa de nada do jogo no repositório: o modelo continua o mesmo (o jogador compila
+a partir do próprio disco). Versão alvo a definir; depende da ordem da Parte 14.
+
+## Parte 14: ordem única de execução
 
 | # | Fase | Ganho esperado | Esforço |
 |---|---|---|---|
@@ -1021,3 +1090,14 @@ interfaces.
 | # | Item | Resolve | Esforço |
 |---|---|---|---|
 | L-a | **L1**: páginas numa sidebar à esquerda | navegação entre Game, Settings, Keyboard, Controller e Log | cerca de 1 dia |
+
+**A trilha da Premium TV Sound Edition** (Parte 13) mexe no `recompile.json`, no `generate.py`, no CMake, no importer e
+nos arquivos nativos do port. Versão alvo a definir. A E2 vale por si mesma e pode vir antes.
+
+| # | Item | Resolve | Esforço |
+|---|---|---|---|
+| E-a | **E2**: chunks achados pelo `generate.py` | números de chunk fixos no CMake | meio dia |
+| E-b | **E1**: um perfil por edição | os endereços fixos da busca, do limitador, do gancho e do `memmove` | cerca de 1 dia |
+| E-c | **E3**: importer e dados | reconhecer o disco BLJS10219, saves e dados | cerca de 1 dia |
+| E-d | **E4**: perfis de PGO da Premium | os perfis são por chunk | horas |
+| E-e | **E5**: testes | o menu "Custom Soundtrack" e as músicas | 1–2 dias |
