@@ -1009,9 +1009,24 @@ treinado do mesmo jeito (5 minutos), e o pacote escolhe pelo hash do EBOOT (o `p
 - A edição normal sem regressão.
 
 **Esforço total: 3 a 5 dias.** Não precisa de nada do jogo no repositório: o modelo continua o mesmo (o jogador compila
-a partir do próprio disco). Versão alvo a definir; depende da ordem da Parte 14.
+a partir do próprio disco). **É a prioridade da 0.6.1** (decidido em 21/11; Parte 14).
 
 ## Parte 14: ordem única de execução
+
+**Prioridade (decidido em 21/11): a trilha da Premium TV Sound Edition vem primeiro**, antes das outras desta parte, e
+entra na 0.6.1. Ela mexe no `recompile.json`, no `generate.py`, no CMake, no importer e nos arquivos nativos do port
+(Parte 13). A E2 vem antes dos outros itens dela. A Fase 1 (registradores locais), que estava em andamento, fica parada
+até a trilha terminar.
+
+| # | Item | Resolve | Esforço |
+|---|---|---|---|
+| E-a | **E2**: chunks achados pelo `generate.py` | números de chunk fixos no CMake | meio dia |
+| E-b | **E1**: um perfil por edição | os endereços fixos da busca, do limitador, do gancho e do `memmove` | cerca de 1 dia |
+| E-c | **E3**: importer e dados | reconhecer o disco BLJS10219, saves e dados | cerca de 1 dia |
+| E-d | **E4**: perfis de PGO da Premium | os perfis são por chunk | horas |
+| E-e | **E5**: testes | o menu "Custom Soundtrack" e as músicas | 1–2 dias |
+
+**Depois dela**, a ordem das outras trilhas:
 
 | # | Fase | Ganho esperado | Esforço |
 |---|---|---|---|
@@ -1090,14 +1105,3 @@ interfaces.
 | # | Item | Resolve | Esforço |
 |---|---|---|---|
 | L-a | **L1**: páginas numa sidebar à esquerda | navegação entre Game, Settings, Keyboard, Controller e Log | cerca de 1 dia |
-
-**A trilha da Premium TV Sound Edition** (Parte 13) mexe no `recompile.json`, no `generate.py`, no CMake, no importer e
-nos arquivos nativos do port. Versão alvo a definir. A E2 vale por si mesma e pode vir antes.
-
-| # | Item | Resolve | Esforço |
-|---|---|---|---|
-| E-a | **E2**: chunks achados pelo `generate.py` | números de chunk fixos no CMake | meio dia |
-| E-b | **E1**: um perfil por edição | os endereços fixos da busca, do limitador, do gancho e do `memmove` | cerca de 1 dia |
-| E-c | **E3**: importer e dados | reconhecer o disco BLJS10219, saves e dados | cerca de 1 dia |
-| E-d | **E4**: perfis de PGO da Premium | os perfis são por chunk | horas |
-| E-e | **E5**: testes | o menu "Custom Soundtrack" e as músicas | 1–2 dias |
