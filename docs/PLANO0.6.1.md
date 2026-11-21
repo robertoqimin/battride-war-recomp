@@ -999,6 +999,12 @@ Com 6 KB a mais de código a divisão muda. O `generate.py` grava num `port_chun
 que o port ajusta, e os chunks quentes passam a ser definidos pelas funções que contêm, não pelo número. Vale também
 para a edição normal: deixa o port mais robusto a qualquer mudança do lifter.
 
+> **Feito em 21/11.** O `recompile.json` ganhou `chunk_anchors` (as funções que o port ajusta) e `arena_hook_return`.
+> O `generate.py` acha em que chunk ficou cada uma e grava `src/recomp/port_chunks.cmake`; o gancho do buffer gráfico
+> é procurado em todos os chunks (exige um acerto só). O CMake lê esse arquivo para o limitador, a busca nativa, o
+> `-O3` e os fast paths de memória. Na edição normal os chunks saem os mesmos (013, 029, 015/017/021/029/030); build
+> completo com `-j2` (mínimo de 7,8 GB livres) e 30 s de luta a 48,3 fps, como antes.
+
 ### E3: importer e dados (cerca de 1 dia)
 
 - Dois manifestos de disco (ou um por título) e o importer reconhecendo os dois ISOs.
