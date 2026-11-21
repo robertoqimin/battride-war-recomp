@@ -6,5 +6,19 @@
   "ppu_chunks": 84,
   "registered_spu_sha256": [
     "615f01318fb1c02fbb03cd0fdca61b2144aaed4846bb2fc12fe4ca8fe2dc0657"
-  ]
+  ],
+  "arena_hook_return": "0x0045BC64",
+  "chunk_anchors": {
+    "native_lookup": "func_004B5120",
+    "frame_limiter": "func_003ABE20",
+    "hot_o3": "func_004B5120",
+    "flags_unit": "func_004A96E0",
+    "fast_memory": [
+      "func_0042D188",
+      "func_004A96E0",
+      "func_005C79B4",
+      "func_004B5120",
+      "func_0052A540"
+    ]
+  }
 }

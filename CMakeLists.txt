@@ -77,6 +77,20 @@ endif()
 list(LENGTH RECOMP_SOURCES RECOMP_SOURCE_COUNT)
 message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 
+# The chunks that hold the functions this port tunes, found by
+# scripts/build/generate.py (recompile.json, chunk_anchors): the lifter splits
+# the code by size, so the numbers follow the EBOOT. A tree generated before
+# that file existed gets the BLJS10220 numbers.
+set(PORT_CHUNK_NATIVE_LOOKUP "029")
+set(PORT_CHUNK_FRAME_LIMITER "013")
+set(PORT_CHUNK_HOT_O3 "029")
+set(PORT_CHUNK_FLAGS_UNIT "017")
+set(PORT_CHUNKS_FAST_MEMORY "015;017;021;029;030")
+include("${RECOMP_DIR}/port_chunks.cmake" OPTIONAL RESULT_VARIABLE port_chunks_file)
+if(port_chunks_file)
+    message(STATUS "Tuned chunks:    ${PORT_CHUNKS_FAST_MEMORY} (from port_chunks.cmake)")
+endif()
+
 # ---------------------------------------------------------------------------
 # Target CPU
 # ---------------------------------------------------------------------------
@@ -503,7 +517,7 @@ endif()
 # Hot animation/transform routines observed in the first mission.
 # Preserve guest arithmetic flags, optimize this generated unit only.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    set_source_files_properties("${RECOMP_DIR}/ppu_recomp_017.cpp" PROPERTIES
+    set_source_files_properties("${RECOMP_DIR}/ppu_recomp_${PORT_CHUNK_FLAGS_UNIT}.cpp" PROPERTIES
         COMPILE_OPTIONS "${PORT_LIFTED_OPTIONS};-O2")
 endif()
 
@@ -516,13 +530,13 @@ set_source_files_properties("${PORT_SRC}/spu/spu_bridge.c" PROPERTIES INCLUDE_DI
 
 set_source_files_properties("${PORT_SRC}/io/fs_bridge.cpp" PROPERTIES COMPILE_DEFINITIONS "PORT_PPU_FS_SOURCE=\"${PS3RECOMP_DIR}/runtime/ppu/ppu_fs.cpp\"")
 
-# The combat CPU profile identifies func_004B5120 (tree traversal) in chunk
-# 029 as a hot PPU path. Optimize that translation unit more aggressively,
+# The combat CPU profile identifies func_004B5120 (tree traversal) as a hot
+# PPU path (its chunk: PORT_CHUNK_HOT_O3). Optimize that translation unit more aggressively,
 # keeping the rest at the preset's O2 and preserving strict FP contraction.
 option(PORT_HOT_PPU_O3 "Use O3 for the profiled hot PPU chunk" ON)
 if(PORT_HOT_PPU_O3 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     foreach(source IN LISTS RECOMP_SOURCES)
-        if(source MATCHES "ppu_recomp_029\\.cpp$")
+        if(source MATCHES "ppu_recomp_${PORT_CHUNK_HOT_O3}\\.cpp$")
             set_property(SOURCE "${source}" APPEND PROPERTY COMPILE_OPTIONS -O3)
         endif()
     endforeach()
@@ -531,7 +545,7 @@ endif()
 # Memory helpers dominate the busy PPU thread's combat profile. Apply the
 # guarded inline paths only to profiled chunks, avoiding growth in cold code.
 option(PORT_PPU_FAST_MEMORY "Inline guarded PPU memory accesses in hot chunks" ON)
-set(PORT_PPU_FAST_MEMORY_CHUNKS "015;017;021;029;030" CACHE STRING "Generated PPU chunks using guarded inline memory")
+set(PORT_PPU_FAST_MEMORY_CHUNKS "${PORT_CHUNKS_FAST_MEMORY}")
 if(PORT_PPU_FAST_MEMORY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW))
     foreach(chunk IN LISTS PORT_PPU_FAST_MEMORY_CHUNKS)
         set(source "${RECOMP_DIR}/ppu_recomp_${chunk}.cpp")
@@ -547,7 +561,7 @@ endif()
 # makes the lifted definition weak; a lift that put the function elsewhere
 # leaves the replacement off rather than failing to link.
 option(PORT_PPU_NATIVE "Native replacements for hot translated PPU functions" ON)
-set(PORT_PPU_NATIVE_CHUNK "029" CACHE STRING "Generated PPU chunk defining func_004B5120")
+set(PORT_PPU_NATIVE_CHUNK "${PORT_CHUNK_NATIVE_LOOKUP}")
 if(PORT_PPU_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW))
     set(source "${RECOMP_DIR}/ppu_recomp_${PORT_PPU_NATIVE_CHUNK}.cpp")
     set(native_defined "")
@@ -567,7 +581,7 @@ endif()
 # interval without the limiter's wait (port/core/frame_limiter.cpp). Same
 # weak-definition mechanism as the native replacements above.
 option(PORT_FRAME_LIMITER_WRAP "Time the game's frame limiter (busy_ms in PORT_FRAME_TIMES)" ON)
-set(PORT_FRAME_LIMITER_CHUNK "013" CACHE STRING "Generated PPU chunk defining func_003ABE20")
+set(PORT_FRAME_LIMITER_CHUNK "${PORT_CHUNK_FRAME_LIMITER}")
 if(PORT_FRAME_LIMITER_WRAP AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND (NOT WIN32 OR MINGW))
     set(source "${RECOMP_DIR}/ppu_recomp_${PORT_FRAME_LIMITER_CHUNK}.cpp")
     set(limiter_defined "")

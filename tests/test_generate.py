@@ -67,5 +67,27 @@ class GenerateCacheTests(unittest.TestCase):
             g.ROOT = old_root
 
 
+    def test_chunk_map_and_hook_follow_the_functions(self):
+        ppu = self.dir / 'recomp'
+        ppu.mkdir()
+        (ppu / 'ppu_recomp_000.cpp').write_text('void func_00000100(ppu_context* ctx) {\n}\n')
+        (ppu / 'ppu_recomp_001.cpp').write_text('void func_00000200(ppu_context* ctx) {\n    ctx->lr = 0x00000208;\n'
+                                                '    func_00000300(ctx);\n}\nvoid func_00000400(ppu_context* ctx) {\n}\n')
+        where = g.chunk_map(ppu, {'native_lookup': 'func_00000400', 'fast_memory': ['func_00000100', 'func_00000200']})
+        self.assertEqual(where, {'func_00000100': '000', 'func_00000200': '001', 'func_00000400': '001'})
+        text = (ppu / 'port_chunks.cmake').read_text()
+        self.assertIn('set(PORT_CHUNK_NATIVE_LOOKUP "001")', text)
+        self.assertIn('set(PORT_CHUNKS_FAST_MEMORY "000;001")', text)
+        with self.assertRaises(RuntimeError):
+            g.chunk_map(ppu, {'native_lookup': 'func_DEADBEEF'})
+        # The graphics hook is found in whichever chunk holds the call.
+        g.hook_graphics_buffers(ppu, '0x00000208')
+        lines = (ppu / 'ppu_recomp_001.cpp').read_text().split('\n')
+        self.assertTrue(lines[0].startswith('extern "C" void port_expand_graphics_buffers'))
+        self.assertEqual(lines[2].strip(), 'port_expand_graphics_buffers(ctx, (uint32_t)ctx->gpr[31]);')
+        self.assertEqual(lines[3].strip(), 'ctx->lr = 0x00000208;')
+        with self.assertRaises(RuntimeError):
+            g.hook_graphics_buffers(ppu, '0x00000999')
+
 if __name__ == '__main__':
     unittest.main()
