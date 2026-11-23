@@ -5,7 +5,7 @@
 Repositório alvo: [robertoqimin/battride-war-recomp](https://github.com/robertoqimin/battride-war-recomp) (partindo da v0.6.0, SDK `sp00nznet/ps3recomp@a6d76c8`).
 Referência: [SamiEnazi/infamous2-port](https://github.com/SamiEnazi/infamous2-port) (v0.6.3).
 
-Este documento junta nove coisas:
+Este documento junta dez coisas:
 
 1. Como o port do inFAMOUS 2 funciona, como referência.
 2. O que trazer dele para o Battride: otimizações do lifter PPU e melhorias gráficas.
@@ -18,6 +18,7 @@ Este documento junta nove coisas:
 7. O tamanho dos pacotes: 707 MB no Windows e 235 MB no AppImage, contra cerca de 50 MB no infamous2.
 8. A interface do launcher: as páginas passam das abas para uma sidebar à esquerda.
 9. A Premium TV Sound Edition (BLJS10219), pedida na issue #3.
+10. Rodar as duas edições sem nenhuma camada que interprete o PS3 em tempo real (N1 a N4).
 
 No fim há uma ordem única de execução.
 
@@ -43,6 +44,7 @@ No fim há uma ordem única de execução.
 - [Parte 12: interface do launcher (L1)](#parte-12-interface-do-launcher-l1)
 - [Parte 13: Premium TV Sound Edition, BLJS10219 (E1 a E5)](#parte-13-premium-tv-sound-edition-bljs10219-e1-a-e5)
 - [Parte 14: ordem única de execução](#parte-14-ordem-única-de-execução)
+- [Parte 15: as duas edições 100% nativas (N1 a N4)](#parte-15-as-duas-edições-100-nativas-n1-a-n4)
 
 ---
 
@@ -1157,3 +1159,90 @@ interfaces.
 | # | Item | Resolve | Esforço |
 |---|---|---|---|
 | L-a | **L1**: páginas numa sidebar à esquerda | navegação entre Game, Settings, Keyboard, Controller e Log | cerca de 1 dia |
+
+## Parte 15: as duas edições 100% nativas (N1 a N4)
+
+Decidido em 22/11: tirar do caminho de execução, nas duas edições, tudo o que ainda interpreta o PS3 em tempo real,
+antes dos perfis de PGO da Premium (E4). Parte do "Plano para 100% nativo" que o autor escreveu, ajustado ao que o
+código e as medições mostram.
+
+### Onde cada parte está hoje
+
+| Parte | Hoje | N |
+|---|---|---|
+| PPU (lógica do jogo) | Traduzido para C++: 84 chunks na normal, 117 na Premium | — |
+| Chamadas do sistema (HLE) | Reimplementadas no port e no SDK | — |
+| Imagem SPU `615f0131…` | Traduzida, registrada pelo hash (igual nas duas edições) | — |
+| Tarefa de áudio SPU `e33837bb…` | Traduzida abaixo do "data tail"; o resto interpretado (~1,2% das amostras) | N1 |
+| Codec MP3 (`flashMP3.pic`) | Traduzido só com o SHA-256 conferido; outro firmware fica interpretado | N1 |
+| Codec ATRAC (`flashATRAC.pic`) | Interpretado; nunca visto em uso | N1 |
+| Shaders RSX | Traduzidos para SPIR-V na primeira vez que aparecem; cache por hash e `VkPipelineCache` em disco | N2 |
+| GPU (comandos GCM/RSX) | O motor relê o command buffer do PS3 a cada frame (`gcm_bridge.c`, `rsx_engine_bridge.c`) | N3 |
+| Memória e registradores | Layout do PS3: big-endian, 32 bits, contexto PPU | N4 |
+
+**Gargalo hoje:** o `runTaskMain` (PPU traduzido) usa 84–93% de um núcleo em STG02 e é o que limita o fps; a thread
+de render fica em ~45% e a de áudio em ~45%. As fases abaixo tiram camadas interpretadas, mas quase não mudam o fps; o
+ganho de fps continua vindo do PPU (Fase 1 da Parte 5, registradores locais).
+
+**Regras para as duas edições:** as imagens SPU e os arquivos de dados (shaders, `_fpk`) são os mesmos nas duas, então
+N1 e N2 valem para as duas de uma vez. O que depende do EBOOT (endereços de funções do renderer em N3 e N4) entra no
+perfil de cada edição no `recompile.json`, como na E1. Cada passo tem uma chave `PORT_*=0` que volta ao comportamento
+antigo, e cada fase é testada nas duas edições.
+
+### N1: SPU de áudio todo traduzido (2–4 semanas)
+
+1. Medir o que sobra interpretado com `PORT_SPU_PROFILE` em STG02, stg08 e um capítulo com vídeo, nas duas edições.
+2. `PORT_SPU_MISS_LOG=1`: registrar cada endereço de local store que cai no interpretador (uma vez por endereço), para
+   regressões aparecerem nos testes.
+3. Aceitar uma lista de SHA-256 conhecidos do `flashMP3.pic` (outras versões do firmware), em vez de um só.
+4. Estender o `lift_audio_spu.py` às entradas restantes: saltos indiretos por tabela (tabelas resolvidas e passadas
+   ao lifter) e overlays carregados em tempo de execução (cada um identificado pelo SHA-256 e pelo endereço de carga).
+5. Traduzir o `flashATRAC.pic` do mesmo jeito que o MP3, se ele aparecer em alguma rota.
+
+O gerador **não** passa a falhar quando sobra algo sem tradução (o `--allow-partial` fica): um jogador com uma imagem
+inesperada continuaria jogando com o interpretador, em vez de ficar sem build.
+
+**Pronto quando:** `PORT_SPU_MISS_LOG` não registra nada nas rotas de teste das duas edições; blocos de áudio atrasados
+≤ 0,2% em combate; fps de STG02 igual ou melhor.
+
+### N2: shaders prontos antes de o jogo rodar (3–5 semanas)
+
+1. `PORT_SHADER_DUMP=<pasta>` grava cada programa de vértice e de fragmento novo (bytes, hash e estado que entra na
+   chave), para medir a cobertura.
+2. Achar onde o jogo guarda os programas (`UserShaderNew.fpk`, `shaderNew/*.vpo|fpo`) e extrair a lista completa
+   **do disco do jogador, no build**: o repositório não pode trazer nem os shaders nem dumps deles.
+3. `scripts/build/lift_shaders.py` traduz a lista com o mesmo tradutor do SDK e gera uma tabela `hash → SPIR-V`
+   compilada no binário, fora do Git como o resto do código gerado.
+4. O backend busca primeiro na tabela; o que faltar é traduzido como hoje e registrado (`PORT_SHADER_MISS_LOG=1`).
+   Os pipelines Vulkan são criados no carregamento.
+
+**Pronto quando:** nenhum shader traduzido em tempo real nas rotas de teste; imagem igual à atual; sem engasgos ao
+entrar numa fase nova.
+
+### N3: renderer nativo no lugar do motor RSX (meses, por partes)
+
+1. Mapear o renderer do jogo: as funções que montam comandos (`cellGcmSet*`, escrita direta no FIFO, troca de render
+   target, flip), agrupadas em frame, passe, material e malha (`docs/RENDERER.md`), com os endereços de cada edição.
+2. Substituir as funções do nível mais alto possível por chamadas a um renderer Vulkan próprio, com o mecanismo de
+   símbolo fraco já usado na busca nativa e no limitador; `PORT_NATIVE_PASS=hud,scene,...` liga um passe de cada vez.
+3. Ordem: HUD e menus 2D; vídeos; cena principal; sombras e profundidade; pós-processamento e partículas.
+4. Quando todos os passes forem nativos, o motor RSX fica só atrás de `PORT_RSX_LEGACY=1`.
+
+O código traduzido depende da semântica do RSX (semáforos, labels, reports, flip): cada passe precisa manter isso. É
+a parte mais longa e de maior risco, e quase não muda o fps (a thread de render não é o limite).
+
+### N4 (pontual): sair do modelo de máquina do PS3
+
+Não como meta. Só as funções mais quentes que o perfil apontar, reescritas à mão com estruturas do host e conversão
+de endianness só na fronteira, como já foi feito na busca nativa (`ppu_native.cpp`). O resto continua traduzido.
+
+### Ordem
+
+| # | Item | Esforço |
+|---|---|---|
+| N-a | N1, passos 1–3 (medir, `PORT_SPU_MISS_LOG`, hashes do MP3) | dias |
+| N-b | N1, passos 4–5 (entradas restantes, ATRAC) | 1–3 semanas |
+| N-c | N2 | 3–5 semanas |
+| N-d | N3, mapa do renderer e HUD | 1–2 meses |
+| N-e | N3, cena, sombras, pós-processamento | meses |
+
