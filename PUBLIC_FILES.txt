@@ -53,6 +53,7 @@ port/core/timebase.c
 port/graphics/fsr1_bridge.c
 port/graphics/fsr1_spv.h
 port/graphics/gcm_bridge.c
+port/graphics/native_pass.cpp
 port/graphics/rsx_engine_bridge.c
 port/graphics/rsx_vertex_bridge.c
 port/graphics/vulkan_bridge.c

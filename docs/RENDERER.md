@@ -148,12 +148,34 @@ Com isso, um desenho 2D tem tudo o que precisa para ser feito em Vulkan sem coma
 a textura (o `CellGcmTexture`, que o backend já sabe ler), o sampler, os vértices (24 bytes, no `dispositivo+0xDC`),
 o alvo (`dispositivo+0xC0`) e o estado de render da op5 (campos do dispositivo ainda a mapear).
 
+## Passe nativo do 2D, etapa 1: captura (23/11)
+
+Opção de build `PORT_NATIVE_PASS` (desligada por padrão; `port/graphics/native_pass.cpp`). Os mesmos wrappers da
+sonda passam os comandos do motor e os desenhos do caminho 2D para um rastreador de estado: a op32 dá o efeito, a op34
+a textura (o `CellGcmTexture` do objeto), a op35 o sampler, e no desenho os vértices são copiados do buffer circular.
+O estado de render não precisa ser rastreado: a op5 emite blend, depth e cull direto no buffer de comandos RSX
+(`func_004689A0`), onde o motor RSX os vê. `PORT_NATIVE_PASS=capture[:<segundos>]` imprime o que foi capturado; nada
+do que o jogo desenha muda.
+
+| | Logos e título | Menus | Luta |
+|---|---|---|---|
+| Desenhos do caminho 2D por segundo | ~1.480 | ~4.700 | ~4.050 |
+| Capturados com `SH_PRETRANS_TEX_COL_P` | ~1.145 | ~3.940 | ~3.275 |
+
+- Efeitos no caminho 2D: `SH_PRETRANS_TEX_COL_P` (a maioria), `SH_PRETRANS_TEX_COL_MUL_P`, `SH_PRETRANS_COL_P` (sem
+  textura) e, nos menus, `SH_BLOOMFAKE_EXTRACT_FILTER_P`, `SH_BLOOMFAKE_DOWN_FILTER_P` e `SH_BLOOMFAKE_FILTER_P`.
+- Texturas: só DXT1 (`0x86`), DXT3 (`0x87`) e DXT5 (`0x88`), que o Vulkan desenha direto (BC1/BC2/BC3).
+- Primitivas do motor: 2 (lista de triângulos, 6 vértices por sprite) e 4 (4 vértices, quadros de tela cheia).
+- Exemplo: sprite de 6 vértices, textura DXT5 512×256 em `0x033F4000`, primeiro vértice (-0,400, 0,356, 1,0), cor
+  branca, UV (0, 0).
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
 2. Mapear os campos de estado de render que a op5 grava no dispositivo (blend, alpha, depth, cull).
-3. Protótipo do primeiro passe nativo (`PORT_NATIVE_PASS=hud`): no desenho do caminho 2D, montar o desenho Vulkan a
-   partir do dispositivo e do gerenciador de efeitos, só para `SH_PRETRANS_TEX_COL_P`, e comparar a imagem com o motor
-   RSX desenhando a mesma coisa.
-4. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.
+3. Etapa 2: desenhar os registros capturados numa imagem à parte, em Vulkan (shader próprio para
+   `SH_PRETRANS_TEX_COL_P`, texturas BC lidas da memória do RSX), e comparar com o quadro do motor RSX nos menus.
+4. Etapa 3: no lugar do desenho, um marcador no buffer de comandos RSX que o motor troca pelo desenho nativo na mesma
+   posição da sequência (`PORT_NATIVE_PASS=hud`).
+5. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.

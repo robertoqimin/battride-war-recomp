@@ -1312,6 +1312,13 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > sampler global `S_Simple` e a op35 dá o estado do sampler. O objeto de textura traz um `CellGcmTexture` completo (na
 > tela de logos: DXT5, 2048×1024). O caminho 2D está todo mapeado, menos os campos de estado de render da op5.
 > Próximo: esses campos e o protótipo do passe nativo do 2D (`PORT_NATIVE_PASS=hud`).
+>
+> **Passe nativo do 2D, etapa 1 (captura) feita em 23/11.** Opção de build `PORT_NATIVE_PASS`
+> (`native_pass.cpp`): um rastreador de estado nos comandos do motor monta, para cada desenho do 2D, o registro
+> nativo completo (efeito, `CellGcmTexture`, sampler, vértices copiados). Não precisa rastrear o estado de render: a
+> op5 o emite direto no buffer RSX. Validado nos menus e na luta: ~4 mil desenhos 2D por segundo, a maioria com
+> `SH_PRETRANS_TEX_COL_P`, texturas só DXT1/3/5. Etapas seguintes: desenhar os registros numa imagem à parte e
+> comparar com o quadro do motor RSX; depois, o marcador no buffer de comandos que troca o desenho na ordem certa.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 
