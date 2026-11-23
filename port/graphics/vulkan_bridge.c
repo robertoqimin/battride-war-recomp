@@ -2656,7 +2656,8 @@ static void vk_window_rect(int32_t* x0, int32_t* y0, int32_t* x1, int32_t* y1)
  * PORT_WINDOW_DUMP_FRAME presented frames (default 600), to check scaling
  * without a screenshot tool. With PORT_WINDOW_DUMP_TRIGGER=<file> instead, the
  * frame after that file appears is written (and the file removed), so a test
- * script can pick a moment rather than a frame count. Debug only: it waits for
+ * script can pick a moment rather than a frame count -- again each time the
+ * file reappears, so a script can watch the screen while it drives the pad. Debug only: it waits for
  * the GPU. */
 static void vk_window_dump(VkCommandBuffer cb, VkImage img, u32 w, u32 h)
 {
@@ -2673,7 +2674,7 @@ static void vk_window_dump(VkCommandBuffer cb, VkImage img, u32 w, u32 h)
             fclose(f);
             VK_LOG("window frame %ux%u written to %s\n", s_vk.win_dump_w, s_vk.win_dump_h, path);
         }
-        s_vk.win_dump_state = 2;
+        { const char* t = getenv("PORT_WINDOW_DUMP_TRIGGER"); s_vk.win_dump_state = (t && *t) ? 0 : 2; }
         return;
     }
     const char* trigger = getenv("PORT_WINDOW_DUMP_TRIGGER");
@@ -2684,7 +2685,8 @@ static void vk_window_dump(VkCommandBuffer cb, VkImage img, u32 w, u32 h)
         const char* at = getenv("PORT_WINDOW_DUMP_FRAME");
         if (s_vk.presented < (at ? (u32)atoi(at) : 600u)) return;
     }
-    if (
+    if (s_vk.win_dump.buf && (s_vk.win_dump_w != w || s_vk.win_dump_h != h)) return;   /* the window changed size */
+    if (!s_vk.win_dump.buf &&
         vk_create_host_buffer(&s_vk.win_dump, (VkDeviceSize)w * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         return;
     vk_barrier_image_on(cb, img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);

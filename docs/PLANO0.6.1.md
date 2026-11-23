@@ -1225,8 +1225,18 @@ inesperada continuaria jogando com o interpretador, em vez de ficar sem build.
 > GPU integrada: `PORT_SPU_MISS_LOG` vazio nas duas edições (a tradução antiga dá 18 entradas), 0 underruns em 938
 > blocos, 54,8 fps na normal e 54,7 na Premium. O áudio gravado (`AUDIO_WAV`, 119 s) tem o mesmo nível da tradução
 > antiga (RMS mediano 0,051 contra 0,050, mesmos 332 trechos de silêncio, sem NaN nem saturação).
-> `PORT_AUDIO_INTERPRET=1` continua interpretando tudo. Testes: `tests/test_lift_audio.py`. Falta: stg08 e um
-> capítulo com vídeo, e o ATRAC (passo 5).
+> `PORT_AUDIO_INTERPRET=1` continua interpretando tudo. Testes: `tests/test_lift_audio.py`.
+>
+> **Rotas extras, automatizadas (23/11).** O `PORT_WINDOW_DUMP_TRIGGER` passou a gravar um quadro a cada vez que o
+> arquivo reaparece, e com o `PAD_FILE` um script dirige os menus olhando a tela. Com um save avançado, jogado nas
+> duas edições: Free Mission `CHL/010` (stg08, a fase do módulo de áudio; `mission/missionlist.rmld` dá a fase de
+> cada missão), uma missão do capítulo 4 (stg19), a Prologue (stg02) e o vídeo de abertura inteiro (4.076 quadros,
+> com áudio, `status=0/0`; é o único vídeo do disco, as cenas da história são do motor). **`PORT_SPU_MISS_LOG` vazio
+> em todas.** Underruns só no instante em que uma fase carrega (8 de 938 blocos num intervalo de 5 s), nenhum na
+> luta. Na Premium, o menu "Custom Soundtrack" abre e desenha (`ui/ptse`), com a playlist "PREMIUM TV SOUND" ativa,
+> e o jogo carrega `soundlist_PTSE.rsdl` e `PREMIUM.lst` (a normal, `soundlist_NRM.rsdl`). As músicas originais
+> entram em eventos da missão (`ORG_WIZ_1` na Prologue, `PLAYER_BGM`), que a rota automática não alcançou: falta
+> ouvir uma delas jogando. O ATRAC não apareceu em nenhuma rota (passo 5 sem uso).
 
 ### N2: shaders prontos antes de o jogo rodar (3–5 semanas)
 
