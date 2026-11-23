@@ -186,6 +186,10 @@ do que o jogo desenha muda.
 Resultado, GPU integrada: título, menu principal, tela de configuração da missão e o HUD da luta (retrato, barra de
 vida, minimapa, estilo, painel de tutorial) **iguais** aos do motor RSX. ~3.700 desenhos nativos por segundo no
 título, ~8.800 nos menus, ~7.300 na luta; o resto (tela cheia, outros efeitos e formatos) continua com o jogo.
+**Premium** (BLJS10219): o mesmo passe, com as âncoras e os deslocamentos de TOC da edição (`recompile.json`:
+`toc_effect_manager` `0x3818`, `toc_primitive_table` `0x3888`, `0x88` adiante da normal). O título da Premium (com o
+selo "PREMIUM TV SOUND EDITION") e o menu saem iguais ao motor RSX, ~3.700 desenhos nativos por segundo.
+
 Custo, STG02 60 s, GPU integrada, máquina livre: sem os ganchos 51,4 fps (busy 18,48 ms); com os ganchos e o passe
 desligado 51,3 (18,56); **com o passe nativo 52,0 (18,26)**, p95 23,2 ms nos três: o PPU deixa de montar os comandos
 RSX dos sprites. Diagnóstico: `PORT_NATIVE_PASS=hud-both` (o nativo e o do jogo, um sobre o outro) e `PORT_NATIVE_DEBUG=1|2|3`
@@ -200,5 +204,6 @@ o layout compacto a cor e a UV caíam nas entradas erradas; e sem o flush do jog
 3. Estender o passe nativo aos outros efeitos do 2D (`SH_PRETRANS_TEX_COL_MUL_P`, `SH_PRETRANS_COL_P`, os filtros
    `SH_BLOOMFAKE_*`), aos formatos de textura não comprimidos e às texturas que são alvos de render, e aos passes de
    tela cheia (declaração de 20 bytes).
-4. Medir o desempenho com o passe ligado e testar a Premium; depois, ligar a opção no build por padrão.
+4. Ligar a opção `PORT_NATIVE_PASS` no build por padrão, com o passe ainda escolhido em tempo de execução, depois de
+   cobrir mais telas (galeria, loja, briefing) e o HUD de mais fases.
 5. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.
