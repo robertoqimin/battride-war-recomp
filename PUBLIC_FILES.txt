@@ -40,6 +40,7 @@ port/audio/audio_bridge.c
 port/audio/sail_audio.hpp
 port/audio/sail_bridge.cpp
 port/audio/sail_decoder.hpp
+port/core/draw_probe.cpp
 port/core/frame_limiter.cpp
 port/core/loader_bridge.cpp
 port/core/main.cpp

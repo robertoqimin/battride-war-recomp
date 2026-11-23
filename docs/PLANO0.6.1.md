@@ -1286,6 +1286,13 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > Premium, com os endereços deslocados. Mapa e endereços em `docs/RENDERER.md`. Falta no mapa: métodos calculados a
 > partir de um índice (texturas, constantes) e os comandos da `libgcm`; depois, medir em jogo o que cada função de
 > desenho desenha e ler os argumentos delas (malha, material, alvo).
+>
+> **Passo 1, medição em jogo (23/11).** Opção de build `PORT_DRAW_PROBE` (desligada por padrão): as funções de desenho
+> de cada edição (`chunk_anchors` "draw") ganham um wrapper que conta as chamadas por quem chamou. Com
+> `drive_game.sh`: os menus desenham só por `func_00456548`, 95% vindo do sistema 2D (`func_0044F468`); na luta, o
+> 2D/HUD faz ~150 chamadas por quadro, a cena 3D ~36 (por `func_005B2488` → `func_005B4718`, cada uma em vários
+> lotes) e há 4 passes de tela cheia por quadro (`func_0045ACE8`). Todo desenho passa por essas funções. Próximo: ler
+> os argumentos do caminho 2D (o primeiro passe nativo, HUD e menus). Detalhes em `docs/RENDERER.md`.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 

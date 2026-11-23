@@ -49,7 +49,7 @@ def hook_graphics_buffers(ppu, ret):
 # src/recomp/port_chunks.cmake.
 CHUNK_VARS = {'native_lookup': 'PORT_CHUNK_NATIVE_LOOKUP', 'frame_limiter': 'PORT_CHUNK_FRAME_LIMITER',
               'hot_o3': 'PORT_CHUNK_HOT_O3', 'flags_unit': 'PORT_CHUNK_FLAGS_UNIT',
-              'fast_memory': 'PORT_CHUNKS_FAST_MEMORY'}
+              'fast_memory': 'PORT_CHUNKS_FAST_MEMORY', 'draw': 'PORT_CHUNKS_DRAW'}
 
 def edition_for(spec, digest):
     """The recompile.json edition whose decrypted EBOOT has this SHA-256, or None."""
@@ -79,6 +79,10 @@ def chunk_map(ppu, anchors, edition=None):
         chunks = sorted(set(where[n] for n in names))
         out.append('set(%s "%s")' % (var, ';'.join(chunks)))
         out.append('set(%s_FUNCS "%s")' % (var, ';'.join(names)))
+    # The chunk of each one, for a header force-included in only that chunk
+    # (PORT_DRAW_PROBE: a weak definition there must have its alias beside it).
+    for name in sorted(want):
+        out.append('set(PORT_CHUNK_OF_%s "%s")' % (name, where[name]))
     if edition:
         out.append('set(PORT_TITLE_ID "%s")' % edition['title_id'])
         out.append('set(PORT_FN_NATIVE_LOOKUP "%s")' % anchors['native_lookup'])

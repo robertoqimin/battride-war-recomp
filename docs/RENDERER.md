@@ -53,12 +53,37 @@ cull). Os desenhos do jogo inteiro passam por **3 funções**. "0 chamadores" qu
 | other | `func_0046944C` | `func_0046ACCC` | 016 | 0 | `INVALIDATE_L2` |
 | other | `func_00469450` | `func_0046ACD0` | 029 | 6 | `INVALIDATE_L2` |
 
+## Medido em jogo (23/11)
+
+Com a opção de build `PORT_DRAW_PROBE=ON` (desligada por padrão), as funções de desenho da edição
+(`recompile.json`, `chunk_anchors` "draw") ganham um wrapper que conta cada chamada pelo endereço de retorno de
+quem chamou (`port/core/draw_probe.cpp`); `PORT_DRAW_PROBE=<segundos>` imprime as chamadas por segundo. Rota com
+`scripts/perf/drive_game.sh` e um save avançado, edição normal, GPU integrada:
+
+| Fase | `func_00456548` (`DRAW_ARRAYS`) | `func_005B4718` (indexado) | `func_00456B38` |
+|---|---|---|---|
+| Logos e vídeo | 360/s | — | — |
+| Menu principal e lista de missões | ~4.800/s | — | — |
+| Luta (STG02) | ~9.250/s | ~2.160/s | nunca |
+
+As constantes dos métodos de desenho (`0x1808`, `0x1814`, `0x1824`) só aparecem dentro dessas 3 funções: **todo
+desenho do jogo passa por elas**. O RSX conta mais desenhos por quadro (340–800) porque cada chamada divide o
+desenho em vários lotes de comando. Quem chama:
+
+| Caminho | Normal | Premium | Chamadas |
+|---|---|---|---|
+| 2D: menus, telas e HUD | `func_0044F468` (chamada por `func_004502C8`) | `func_00450CE8` (`func_00451B48`) | 95% do `DRAW_ARRAYS` nos menus, ~150 por quadro na luta |
+| Passes de tela cheia | `func_0045ACE8` (8 chamadores) | `func_0045C568` | 4 por quadro em todas as fases |
+| Cena 3D | `func_005B2488` (chamada por `func_005B2930`, `func_005B3960`, `func_005B3EC0`) | `func_005B3D00` (`func_005B41A8`, `func_005B51D8`, `func_005B5738`) | ~36 por quadro na luta, cada uma em vários lotes |
+
+`func_00456B38` não apareceu nas rotas medidas (menus, carregamento, luta).
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
-2. Medir em jogo quantas vezes por quadro cada uma das 3 funções de desenho roda, e com que shaders e alvos, para
-   separar HUD e menus 2D (o primeiro passe a substituir) da cena 3D.
+2. Ler os argumentos de `func_0044F468` (o caminho 2D): o que o motor passa por sprite (textura, retângulo, cor,
+   shader), para desenhá-lo sem montar comandos RSX.
 3. Ler os argumentos das funções de desenho (as estruturas do motor: malha, material, alvo) e escrever o primeiro
    passe nativo atrás de `PORT_NATIVE_PASS=hud`, com o mecanismo de símbolo fraco da busca nativa e o motor RSX como
    referência para comparar a imagem.

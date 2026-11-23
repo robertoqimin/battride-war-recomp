@@ -78,6 +78,7 @@ class GenerateCacheTests(unittest.TestCase):
         text = (ppu / 'port_chunks.cmake').read_text()
         self.assertIn('set(PORT_CHUNK_NATIVE_LOOKUP "001")', text)
         self.assertIn('set(PORT_CHUNKS_FAST_MEMORY "000;001")', text)
+        self.assertIn('set(PORT_CHUNK_OF_func_00000200 "001")', text)
         with self.assertRaises(RuntimeError):
             g.chunk_map(ppu, {'native_lookup': 'func_DEADBEEF'})
         # The graphics hook is found in whichever chunk holds the call.
