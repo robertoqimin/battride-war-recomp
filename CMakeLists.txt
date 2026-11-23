@@ -175,6 +175,22 @@ set_property(TARGET ps3recomp_runtime PROPERTY SOURCES "${PORT_VK_SOURCES}")
 target_sources(ps3recomp_runtime PRIVATE "${PORT_SRC}/graphics/vulkan_bridge.c"
                                          "${PORT_SRC}/graphics/fsr1_bridge.c"
                                          "${PORT_SRC}/core/thread_affinity.c")
+# The SPIR-V cache's identity (vulkan_bridge.c, PORT_SPIRV_ID): what decides a
+# translation -- the SDK commit, the port's patches to it and the compilers --
+# so both editions share the cache and another translator starts it over.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/recompile.json" port_spec)
+string(JSON port_sdk_commit GET "${port_spec}" sdk_commit)
+file(GLOB port_sdk_patches "${CMAKE_CURRENT_SOURCE_DIR}/patches/ps3recomp/*.patch")
+list(SORT port_sdk_patches)
+set(port_spirv_basis "${port_sdk_commit};${CMAKE_C_COMPILER_ID};${CMAKE_C_COMPILER_VERSION};${CMAKE_CXX_COMPILER_ID};${CMAKE_CXX_COMPILER_VERSION}")
+foreach(patch IN LISTS port_sdk_patches)
+    file(SHA256 "${patch}" patch_hash)
+    string(APPEND port_spirv_basis ";${patch_hash}")
+endforeach()
+string(SHA256 port_spirv_id "${port_spirv_basis}")
+string(SUBSTRING "${port_spirv_id}" 0 16 port_spirv_id)
+set_property(SOURCE "${PORT_SRC}/graphics/vulkan_bridge.c" TARGET_DIRECTORY ps3recomp_runtime APPEND
+             PROPERTY COMPILE_DEFINITIONS "PORT_SPIRV_ID=0x${port_spirv_id}ull")
 
 # Port-local render diagnostics; capture only when explicitly triggered.
 get_target_property(PORT_RENDER_SOURCES ps3recomp_runtime SOURCES)

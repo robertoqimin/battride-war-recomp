@@ -1252,6 +1252,20 @@ inesperada continuaria jogando com o interpretador, em vez de ficar sem build.
 **Pronto quando:** nenhum shader traduzido em tempo real nas rotas de teste; imagem igual à atual; sem engasgos ao
 entrar numa fase nova.
 
+> **Medido e feito em 23/11 (cache de SPIR-V).** O custo não está nos pipelines: o `VkPipelineCache` em disco já
+> deixa a criação em 2,8 ms para 168 pipelines. Está na tradução HLSL → SPIR-V: 336 traduções (60 programas
+> distintos, ~3,5 ms cada, o motor traduzia os dois programas de cada pipeline novo) e 1,2 s no primeiro minuto de
+> STG02. E uma tabela gerada no build a partir dos `.vpo`/`.fpo` do disco não cobriria o que roda: o HLSL de um
+> programa muda com o estado do desenho (layout de vértices, cubo/volume/sombra, gama, formato do alvo, alpha test),
+> e essas variantes só aparecem jogando. Por isso a tabela virou um **cache de SPIR-V por hash do HLSL**
+> (`vk_spirv`, `vulkan_bridge.c`): um texto é traduzido uma vez na sessão e gravado em `spirv.bin`, ao lado do cache
+> de pipelines, para as próximas. O arquivo vale para o mesmo tradutor (`PORT_SPIRV_ID`: commit do SDK, patches do
+> port e compiladores, do CMake), não para o executável, então as duas edições o compartilham. Na segunda rodada de
+> STG02: **0 traduções** (eram 60 programas, 1.183 ms); a Premium reaproveitou os 60 da normal. `PORT_SHADER_CACHE=0`
+> desliga; `PORT_SHADER_MISS_LOG=1` registra cada tradução. `scripts/perf/drive_game.sh` (o roteiro de botões e
+> capturas usado na N1) entrou no repositório. Falta: cobrir as outras fases e menus (cada lugar novo traduz uma
+> vez, na primeira visita) e, se valer, aquecer o cache no build com uma rota automática.
+
 ### N3: renderer nativo no lugar do motor RSX (meses, por partes)
 
 1. Mapear o renderer do jogo: as funções que montam comandos (`cellGcmSet*`, escrita direta no FIFO, troca de render

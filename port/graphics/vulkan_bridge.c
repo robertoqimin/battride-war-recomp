@@ -326,6 +326,8 @@ static struct {
     u32             created;      /* pipelines created since the last save */
     u32             total;        /* and in this run */
     long long       ns;           /* time spent creating them, this run */
+    u32             spv;          /* guest programs translated HLSL -> SPIR-V, this run */
+    long long       spv_ns;       /* and the time it took (docs/PLANO0.6.1.md, N2) */
     long long       last_new;     /* monotonic ns of the newest */
     size_t          on_disk;      /* bytes in the file: the driver found every
                                    * pipeline there when the size has not grown */
@@ -388,6 +390,9 @@ static int vk_pc_header_ok(const unsigned char* d, size_t n, const VkPhysicalDev
            !memcmp(d + 16, p->pipelineCacheUUID, VK_UUID_SIZE);
 }
 
+static void vk_sc_open(const char* pipeline_path);   /* the SPIR-V cache, below */
+static void vk_sc_save(void);
+
 static void vk_pc_open(void)
 {
     VkPhysicalDeviceProperties p;
@@ -424,6 +429,7 @@ static void vk_pc_open(void)
             s_pc.cache = VK_NULL_HANDLE;                       /* pipelines still work */
     }
     free(data);
+    vk_sc_open(s_pc.path);
 }
 
 /* Writes the cache if pipelines were created since the last write: to a
@@ -431,6 +437,8 @@ static void vk_pc_open(void)
  * skips the wait for the quiet period. Any thread. */
 static void vk_pc_save(int force)
 {
+    if (force || vk_mono_ns() - __atomic_load_n(&s_pc.last_new, __ATOMIC_RELAXED) >= VK_PC_QUIET_NS)
+        vk_sc_save();
     if (!s_pc.cache || !s_pc.path[0] || !__atomic_load_n(&s_pc.created, __ATOMIC_RELAXED)) return;
     if (!force && vk_mono_ns() - __atomic_load_n(&s_pc.last_new, __ATOMIC_RELAXED) < VK_PC_QUIET_NS)
         return;
@@ -442,8 +450,9 @@ static void vk_pc_save(int force)
              n && n <= VK_PC_MAX_BYTES && (data = malloc(n)) &&
              pvkGetPipelineCacheData(s_vk.device, s_pc.cache, &n, data) == VK_SUCCESS;
     if (ok && n == s_pc.on_disk) {               /* nothing new: leave the file alone */
-        VK_LOG("pipeline cache: up to date (%u pipelines this run, %.1f ms creating them)\n",
-               s_pc.total, s_pc.ns / 1e6);
+        VK_LOG("pipeline cache: up to date (%u pipelines this run, %.1f ms creating them; "
+               "%u shaders translated to SPIR-V, %.1f ms)\n",
+               s_pc.total, s_pc.ns / 1e6, s_pc.spv, s_pc.spv_ns / 1e6);
         free(data);
         pthread_mutex_unlock(&s_pc.mu);
         return;
@@ -463,8 +472,9 @@ static void vk_pc_save(int force)
         if (ok) s_pc.on_disk = n;
     }
     if (created)
-        VK_LOG("pipeline cache: %s %zu bytes (%u pipelines this run, %.1f ms creating them)\n",
-               ok ? "saved" : "could not save", n, s_pc.total, s_pc.ns / 1e6);
+        VK_LOG("pipeline cache: %s %zu bytes (%u pipelines this run, %.1f ms creating them; "
+               "%u shaders translated to SPIR-V, %.1f ms)\n",
+               ok ? "saved" : "could not save", n, s_pc.total, s_pc.ns / 1e6, s_pc.spv, s_pc.spv_ns / 1e6);
     free(data);
     pthread_mutex_unlock(&s_pc.mu);
 }
@@ -1588,16 +1598,189 @@ static u32 vk_vtex_mask(const rsx_state* st)
     return m;
 }
 
+/* ---------------------------------------------------------------------------
+ * SPIR-V cache (docs/PLANO0.6.1.md, N2). Each guest program the game draws
+ * with is decompiled to HLSL for its render state, and HLSL -> SPIR-V took
+ * about 3.5 ms a program: 1.2 s in the first minute of STG02, in the frames
+ * where a new effect appears. The result is kept here by the HLSL's own hash,
+ * so one text is translated once -- in a run and across runs -- and written
+ * beside the pipeline cache (spirv.bin; PORT_SHADER_CACHE=0 turns it off, any
+ * other value names the file). It is only used by builds with the same
+ * translator (PORT_SPIRV_ID: the SDK commit, the port's patches to it and the
+ * compilers, from CMake), so the two editions share it and another SDK starts
+ * it over. PORT_SHADER_MISS_LOG=1 reports
+ * each translation that was not in the cache.
+ * -------------------------------------------------------------------------*/
+#define VK_SC_MAX_BYTES (128u << 20)
+typedef struct { u64 key; u32 words; u32* spv; } vk_sc_entry;
+static struct {
+    int             on, miss_log;
+    char            path[1024];
+    u64             id;            /* the translator's identity */
+    vk_sc_entry*    e;
+    u32             n, cap, loaded, added, hits;
+    pthread_mutex_t mu;
+} s_sc = { .mu = PTHREAD_MUTEX_INITIALIZER };
+
+static u64 vk_sc_hash(const void* d, size_t n, u64 h)
+{
+    const unsigned char* p = (const unsigned char*)d;
+    for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 1099511628211ull; }
+    return h;
+}
+
+/* The translator's identity; without one from CMake, the running executable's
+ * size and modification time. */
+static u64 vk_sc_exe_id(void)
+{
+#ifdef PORT_SPIRV_ID
+    return PORT_SPIRV_ID | 1u;
+#endif
+    char exe[1024] = { 0 };
+#ifdef _WIN32
+    if (!GetModuleFileNameA(NULL, exe, sizeof exe - 1)) return 0;
+#else
+    if (readlink("/proc/self/exe", exe, sizeof exe - 1) <= 0) return 0;
+#endif
+    struct stat st;
+    if (stat(exe, &st)) return 0;
+    long long v[2] = { (long long)st.st_size, (long long)st.st_mtime };
+    return vk_sc_hash(v, sizeof v, 1469598103934665603ull) | 1u;
+}
+
+static void vk_sc_add_locked(u64 key, const u32* spv, u32 words)
+{
+    if (s_sc.n == s_sc.cap) {
+        const u32 cap = s_sc.cap ? s_sc.cap * 2u : 512u;
+        vk_sc_entry* e = (vk_sc_entry*)realloc(s_sc.e, cap * sizeof *e);
+        if (!e) return;
+        s_sc.e = e; s_sc.cap = cap;
+    }
+    u32* copy = (u32*)malloc((size_t)words * 4u);
+    if (!copy) return;
+    memcpy(copy, spv, (size_t)words * 4u);
+    s_sc.e[s_sc.n++] = (vk_sc_entry){ key, words, copy };
+}
+
+static void vk_sc_open(const char* pipeline_path)
+{
+    const char* e = getenv("PORT_SHADER_MISS_LOG");
+    s_sc.miss_log = e && *e && *e != '0';
+    e = getenv("PORT_SHADER_CACHE");
+    if (e && !strcmp(e, "0")) { VK_LOG("SPIR-V cache: off (PORT_SHADER_CACHE=0)\n"); return; }
+    if (e && *e) snprintf(s_sc.path, sizeof s_sc.path, "%s", e);
+    else if (pipeline_path && *pipeline_path) {
+        snprintf(s_sc.path, sizeof s_sc.path, "%s", pipeline_path);
+        char* slash = strrchr(s_sc.path, '/');
+        char* back = strrchr(s_sc.path, '\\');
+        if (back > slash) slash = back;
+        if (!slash) return;
+        snprintf(slash + 1, sizeof s_sc.path - (size_t)(slash + 1 - s_sc.path), "spirv.bin");
+    } else {
+        VK_LOG("SPIR-V cache: not saved (no cache folder)\n");
+        return;
+    }
+    s_sc.id = vk_sc_exe_id();
+    s_sc.on = 1;
+    FILE* f = fopen(s_sc.path, "rb");
+    if (!f) { VK_LOG("SPIR-V cache: none yet, will be saved to %s\n", s_sc.path); return; }
+    char magic[8]; u64 id = 0; u32 count = 0, bad = 0, bytes = 0;
+    if (fread(magic, 1, 8, f) != 8 || memcmp(magic, "BRWSPV01", 8) || fread(&id, 8, 1, f) != 1 ||
+        fread(&count, 4, 1, f) != 1) bad = 1;
+    else if (id != s_sc.id) {
+        VK_LOG("SPIR-V cache: %s is from another translator, starting over\n", s_sc.path);
+        fclose(f);
+        return;
+    }
+    for (u32 i = 0; !bad && i < count; i++) {
+        u64 key; u32 words;
+        if (fread(&key, 8, 1, f) != 1 || fread(&words, 4, 1, f) != 1 || !words ||
+            (bytes += words * 4u) > VK_SC_MAX_BYTES) { bad = 1; break; }
+        u32* spv = (u32*)malloc((size_t)words * 4u);
+        if (!spv || fread(spv, 4, words, f) != words) { free(spv); bad = 1; break; }
+        vk_sc_add_locked(key, spv, words);
+        free(spv);
+    }
+    fclose(f);
+    if (bad) {                                   /* truncated or foreign: drop it all */
+        for (u32 i = 0; i < s_sc.n; i++) free(s_sc.e[i].spv);
+        s_sc.n = 0;
+        VK_LOG("SPIR-V cache: %s is damaged, starting over\n", s_sc.path);
+        return;
+    }
+    s_sc.loaded = s_sc.n;
+    VK_LOG("SPIR-V cache: %u programs from %s\n", s_sc.n, s_sc.path);
+}
+
+/* Writes the cache when programs were added, to a temporary file first. */
+static void vk_sc_save(void)
+{
+    pthread_mutex_lock(&s_sc.mu);
+    if (!s_sc.on || !s_sc.added) { pthread_mutex_unlock(&s_sc.mu); return; }
+    char tmp[1040];
+    snprintf(tmp, sizeof tmp, "%s.tmp", s_sc.path);
+    vk_pc_mkdirs(tmp);
+    FILE* f = fopen(tmp, "wb");
+    int ok = f != NULL;
+    if (ok) {
+        ok = fwrite("BRWSPV01", 1, 8, f) == 8 && fwrite(&s_sc.id, 8, 1, f) == 1 && fwrite(&s_sc.n, 4, 1, f) == 1;
+        for (u32 i = 0; ok && i < s_sc.n; i++)
+            ok = fwrite(&s_sc.e[i].key, 8, 1, f) == 1 && fwrite(&s_sc.e[i].words, 4, 1, f) == 1 &&
+                 fwrite(s_sc.e[i].spv, 4, s_sc.e[i].words, f) == s_sc.e[i].words;
+        if (fclose(f)) ok = 0;
+    }
+#ifdef _WIN32
+    if (ok) remove(s_sc.path);                     /* rename does not replace on Windows */
+#endif
+    ok = ok && rename(tmp, s_sc.path) == 0;
+    if (!ok) remove(tmp);
+    VK_LOG("SPIR-V cache: %s %u programs (%u new this run, %u reused)\n",
+           ok ? "saved" : "could not save", s_sc.n, s_sc.n - s_sc.loaded, s_sc.hits);
+    if (ok) s_sc.added = 0;
+    pthread_mutex_unlock(&s_sc.mu);
+}
+
+/* HLSL -> SPIR-V through the cache: the words are at *out (valid until the
+ * next call on this thread's path), 0 on success. */
+static int vk_spirv(const char* hlsl, int stage, const u32** out, u32* words, char* log, size_t log_size)
+{
+    const u64 key = vk_sc_hash(hlsl, strlen(hlsl), vk_sc_hash(&stage, sizeof stage, 1469598103934665603ull));
+    pthread_mutex_lock(&s_sc.mu);
+    for (u32 i = 0; i < s_sc.n; i++)
+        if (s_sc.e[i].key == key) {
+            *out = s_sc.e[i].spv; *words = s_sc.e[i].words;
+            s_sc.hits++;
+            pthread_mutex_unlock(&s_sc.mu);
+            return 0;
+        }
+    pthread_mutex_unlock(&s_sc.mu);
+    const long long t0 = vk_mono_ns();
+    const int r = rsx_hlsl_to_spirv(hlsl, stage, s_g.spv, VK_SPV_WORDS, words, log, log_size);
+    const long long t = vk_mono_ns() - t0;
+    __atomic_add_fetch(&s_pc.spv_ns, t, __ATOMIC_RELAXED);
+    __atomic_add_fetch(&s_pc.spv, 1, __ATOMIC_RELAXED);
+    if (r || !*words) return r ? r : -1;
+    *out = s_g.spv;
+    if (s_sc.miss_log)
+        VK_LOG("SPIR-V cache: translated %s program %016llx (%.1f ms)\n",
+               stage == RSX_SHADER_STAGE_VERTEX ? "vertex" : "fragment", (unsigned long long)key, t / 1e6);
+    pthread_mutex_lock(&s_sc.mu);
+    vk_sc_add_locked(key, s_g.spv, *words);
+    s_sc.added++;
+    pthread_mutex_unlock(&s_sc.mu);
+    return 0;
+}
+
 static VkShaderModule vk_guest_module(const char* what, int stage)
 {
     u32 n = 0;
-    if (rsx_hlsl_to_spirv(s_g.hlsl, stage, s_g.spv, VK_SPV_WORDS, &n,
-                          s_g.log, sizeof s_g.log) != 0) {
+    const u32* spv = NULL;
+    if (vk_spirv(s_g.hlsl, stage, &spv, &n, s_g.log, sizeof s_g.log) != 0) {
         VK_LOG("%s: %s\n", what, s_g.log);
         return VK_NULL_HANDLE;
     }
     VkShaderModuleCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                                    .codeSize = (size_t)n * 4u, .pCode = s_g.spv };
+                                    .codeSize = (size_t)n * 4u, .pCode = spv };
     VkShaderModule m = VK_NULL_HANDLE;
     if (pvkCreateShaderModule(s_vk.device, &ci, NULL, &m) != VK_SUCCESS) {
         VK_LOG("%s: vkCreateShaderModule failed\n", what);
@@ -4043,7 +4226,8 @@ static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out)
         }
         *dst = 0; hlsl = vertex_source;
     }
-    int translated = rsx_hlsl_to_spirv(hlsl, stage, s_g.spv, VK_SPV_WORDS, &words, s_g.log, sizeof s_g.log);
+    const u32* spv = NULL;
+    int translated = vk_spirv(hlsl, stage, &spv, &words, s_g.log, sizeof s_g.log);
     free(vertex_source);
     if (translated || !words) {
         VK_LOG("engine: %s translation failed: %s\n",
@@ -4051,7 +4235,7 @@ static int vk_eng_translate(const char* hlsl, int stage, VkShaderModule* out)
         return -1;
     }
     VkShaderModuleCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                                    .codeSize = (size_t)words * 4u, .pCode = s_g.spv };
+                                    .codeSize = (size_t)words * 4u, .pCode = spv };
     return pvkCreateShaderModule(s_vk.device, &ci, NULL, out) == VK_SUCCESS ? 0 : -1;
 }
 
