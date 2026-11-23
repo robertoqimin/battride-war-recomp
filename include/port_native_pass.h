@@ -13,13 +13,24 @@ extern "C" {
 #define PORT_NATIVE_MARK      0xBA7E0000u
 #define PORT_NATIVE_MAX_VERTS 256u
 
+/* The engine effects the pass draws, each with the fragment program of the
+ * guest's own (docs/RENDERER.md): */
+enum {
+    PORT_NATIVE_TEX_COL = 0,           /* SH_PRETRANS_TEX_COL_P: texture x colour */
+    PORT_NATIVE_COL = 1,               /* SH_PRETRANS_COL_P: colour */
+    PORT_NATIVE_TEX_COL_MUL = 2,       /* SH_PRETRANS_TEX_COL_MUL_P: tex.a (1 - tex.rgb) col.rgb col.a, and tex to target 1 */
+    PORT_NATIVE_TEX = 3,               /* SH_PRETRANS_TEX_P: texture */
+    PORT_NATIVE_KINDS
+};
+
 typedef struct port_native_record {
+    uint32_t kind;                     /* PORT_NATIVE_* */
     uint32_t textured;                 /* 0: colour only */
-    /* the texture, from its CellGcmTexture */
-    uint32_t tex_location, tex_offset, tex_format, tex_width, tex_height;
-    uint32_t tex_levels, tex_pitch, tex_remap;
-    /* the sampler (engine op35): wrap U/V as RSX wrap modes, linear filters */
-    uint8_t wrap_s, wrap_t, min_linear, mag_linear;
+    uint32_t vertex_colour;            /* 0: no colour attribute (the full-screen passes): the RSX's current value */
+    char effect[32];                   /* the engine effect's name, for diagnostics */
+    /* The texture and its sampler are not here: the game's state flush,
+     * which runs before the marker, binds them to texture unit 0, and the
+     * RSX engine takes them from there like any draw of its own. */
     /* triangles, already expanded from the engine's primitive: 3 float4 a
      * vertex (position, colour, texture coordinate), attributes 0, 3 and 8 */
     uint32_t vertex_count;

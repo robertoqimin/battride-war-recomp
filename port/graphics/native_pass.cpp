@@ -78,6 +78,8 @@ constexpr unsigned kRing = 4096;                 /* records in flight between th
 port_native_record* g_ring;                      /* kRing records */
 uint32_t g_next_id, g_pending;
 unsigned long g_native, g_fallback;
+std::map<std::string, unsigned long> g_why;      /* hud: why draws stayed with the game */
+const char* g_reason = "";
 double g_period = 5;
 uint32_t g_toc = 0;
 std::string g_effect;                            /* the effect op32 selected */
@@ -206,48 +208,73 @@ void unpack_rgba(uint32_t w, float* out)
  * when the game's own draw has to run. */
 bool draw_natively(unsigned r3, unsigned r4, unsigned r5, unsigned r6)
 {
-    if (g_effect != "SH_PRETRANS_TEX_COL_P" || !r6 || r6 > PORT_NATIVE_MAX_VERTS / 2) return false;
-    const auto t = g_textures.find(0x8D);         /* the global sampler S_Simple */
-    if (t == g_textures.end()) return false;
-    const uint32_t fmt = t->second.gcm[0] >> 24;
-    if ((fmt & 0x9Fu) != 0x86u && (fmt & 0x9Fu) != 0x87u && (fmt & 0x9Fu) != 0x88u) return false;   /* DXT1/3/5 */
+    static char why[64];
+    g_reason = why;
+    static const char* const kEffects[PORT_NATIVE_KINDS] = {
+        "SH_PRETRANS_TEX_COL_P", "SH_PRETRANS_COL_P", "SH_PRETRANS_TEX_COL_MUL_P", "SH_PRETRANS_TEX_P" };
+    static const char* only = std::getenv("PORT_NATIVE_EFFECTS");   /* diagnostic: a comma list of the above */
+    uint32_t kind = 0;
+    while (kind < PORT_NATIVE_KINDS && g_effect != kEffects[kind]) kind++;
+    if (kind == PORT_NATIVE_KINDS || (only && !std::strstr(only, kEffects[kind]))) {
+        std::snprintf(why, sizeof why, "effect %s", g_effect.c_str());
+        return false;
+    }
+    const bool textured = kind != PORT_NATIVE_COL;
+    if (!r6 || r6 > PORT_NATIVE_MAX_VERTS) { std::snprintf(why, sizeof why, "vertex count %s", r6 > 1024 ? ">1024" : r6 > 512 ? ">512" : ">256"); return false; }
     const uint32_t prim = rsx_primitive(r4);
-    if (prim != 5 && prim != 7) return false;    /* triangles, fan */
-    /* Only the sprite vertex declaration (device+0xCC): position, colour,
-     * texture coordinate in 24 bytes. Others -- the full-screen passes' 20-byte
-     * position and texture coordinate -- stay with the game for now. */
-    static const uint32_t kSpriteDecl[11] = { 1, 3, 0, 0, 7, 9, 0xC, 0, 8, 2, 0x10 };
+    if (prim != 5 && prim != 7) { std::snprintf(why, sizeof why, "primitive %u", prim); return false; }   /* triangles, fan */
+    if (prim == 7 && (r6 < 3 || (r6 - 2) * 3 > PORT_NATIVE_MAX_VERTS)) { g_reason = "vertex count (fan)"; return false; }
+    /* The vertex declaration (device+0xCC): elements of { usage, type,
+     * offset, 0 }. The sprites': position float3, colour RGBA8, texture
+     * coordinate float2 in 24 bytes, in a ring buffer in main memory; the
+     * full-screen passes': position and texture coordinate in 20 bytes, in a
+     * fixed buffer in RSX memory. */
+    static const uint32_t kSpriteDecl[12] = { 1, 3, 0, 0, 7, 9, 0xC, 0, 8, 2, 0x10, 0 };
+    static const uint32_t kScreenDecl[9] = { 1, 3, 0, 0, 8, 2, 0xC, 0, 0 };
     const uint32_t decl = vm_read32(r3 + 0xCC);
-    if (!guest_ptr(decl)) return false;
-    for (unsigned i = 0; i < 11; i++) if (vm_read32(decl + 4 + i * 4) != kSpriteDecl[i]) return false;
+    if (!guest_ptr(decl)) { g_reason = "no vertex declaration"; return false; }
+    auto matches = [&](const uint32_t* d, unsigned n) {
+        for (unsigned i = 0; i < n; i++) if (vm_read32(decl + 4 + i * 4) != d[i]) return false;
+        return true;
+    };
+    const bool sprite = matches(kSpriteDecl, 11);
+    if (!sprite && !matches(kScreenDecl, 9)) {
+        static std::map<std::string, int> shown;
+        char words[160]; int n = 0;
+        for (unsigned k = 0; k < 16; k++) n += std::snprintf(words + n, sizeof words - n, " %X", vm_read32(decl + k * 4));
+        std::snprintf(why, sizeof why, "decl %s", g_effect.c_str());
+        if (!shown[why]++) std::fprintf(stderr, "[native-pass] %s: prim %u count %u, decl%s\n", why, rsx_primitive(r4), r6, words);
+        return false;
+    }
+    /* A full-screen SH_PRETRANS_COL_P (no texture, no colour attribute)
+     * comes out as an opaque white quad over the intro logos when drawn
+     * here, which the game's own draw does not; until that is understood it
+     * stays with the game (docs/RENDERER.md). */
+    if (!sprite && !textured) { g_reason = "full-screen colour"; return false; }
+    const uint32_t stride = sprite ? kVertexBytes : 20;
+    const uint32_t vbase = vm_read32(r3 + 0xDC);
+    if (!guest_ptr(vbase)) { g_reason = "no vertices"; return false; }
     /* the command segment: device+0x108 -> { begin, end, current } */
     const uint32_t seg = vm_read32(r3 + 0x108);
     if (!guest_ptr(seg)) return false;
     const uint32_t cur = vm_read32(seg + 8), end = vm_read32(seg + 4);
-    if (!guest_ptr(cur) || cur + 8 > end) return false;
+    if (!guest_ptr(cur) || cur + 8 > end) { g_reason = "segment full"; return false; }
 
     const uint32_t id = g_next_id++ & 0xFFFFu;
     port_native_record& rec = g_ring[id % kRing];
-    rec.textured = 1;
-    const uint32_t* gcm = t->second.gcm;
-    rec.tex_format = fmt;
-    rec.tex_levels = (gcm[0] >> 16) & 0xFF;
-    rec.tex_remap = gcm[1];
-    rec.tex_width = gcm[2] >> 16; rec.tex_height = gcm[2] & 0xFFFF;
-    rec.tex_location = (gcm[3] >> 8) & 0xFF;
-    rec.tex_pitch = gcm[4]; rec.tex_offset = gcm[5];
-    const auto& smp = g_samplers[0x8D];
-    auto get = [&](uint32_t i, uint32_t dflt) { auto it = smp.find(i); return it == smp.end() ? dflt : it->second; };
-    rec.wrap_s = (uint8_t)get(0, 3); rec.wrap_t = (uint8_t)get(1, 3);
-    rec.min_linear = get(4, 2) == 2; rec.mag_linear = get(5, 2) == 2;
-
-    const uint32_t base = vm_read32(r3 + 0xDC) + r5 * kVertexBytes;
+    rec.kind = kind;
+    rec.textured = textured;
+    rec.vertex_colour = sprite;
+    std::snprintf(rec.effect, sizeof rec.effect, "%s", g_effect.c_str());
+    const uint32_t base = vbase + r5 * stride;
     auto emit = [&](unsigned i) {
-        const uint32_t v = base + i * kVertexBytes;
+        const uint32_t v = base + i * stride;
         float* o = &rec.vertices[(size_t)rec.vertex_count++ * 12];
         o[0] = as_float(vm_read32(v)); o[1] = as_float(vm_read32(v + 4)); o[2] = as_float(vm_read32(v + 8)); o[3] = 1.f;
-        unpack_rgba(vm_read32(v + 12), o + 4);
-        o[8] = as_float(vm_read32(v + 16)); o[9] = as_float(vm_read32(v + 20)); o[10] = 0.f; o[11] = 1.f;
+        const uint32_t uv = sprite ? v + 16 : v + 12;
+        if (sprite) unpack_rgba(vm_read32(v + 12), o + 4);
+        else o[4] = o[5] = o[6] = o[7] = 1.f;    /* the engine puts the RSX's current value here */
+        o[8] = as_float(vm_read32(uv)); o[9] = as_float(vm_read32(uv + 4)); o[10] = 0.f; o[11] = 1.f;
     };
     rec.vertex_count = 0;
     if (prim == 5) {
@@ -303,10 +330,15 @@ extern "C" int port_native_draw(unsigned r3, unsigned r4, unsigned r5, unsigned 
         bool done = draw_natively(r3, r4, r5, r6);
         if (done && g_mode == 3 && !commit_marker(r3)) done = false;   /* hud-both: no flush needed */
         (done ? g_native : g_fallback)++;
+        if (!done) g_why[g_reason]++;
         const auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration<double>(now - g_t0).count() >= 5) {
-            std::fprintf(stderr, "[native-pass] hud: %lu draws native, %lu by the game, in 5 s\n", g_native, g_fallback);
+            std::string line;
+            for (const auto& [why, n] : g_why) line += "; " + why + " x" + std::to_string(n);
+            std::fprintf(stderr, "[native-pass] hud: %lu draws native, %lu by the game, in 5 s%s\n", g_native, g_fallback,
+                         line.c_str());
             g_native = g_fallback = 0;
+            g_why.clear();
             g_t0 = now;
         }
         return done && g_mode == 2 ? 1 : 0;
