@@ -50,6 +50,51 @@ static int audio_compiled_ok(const spu_context* ctx, uint32_t pc)
     return 0;
 }
 
+/* The call drain of the translated audio code (lift_audio_spu.py puts it in
+ * place of the runtime's spu_drain_call): run the callee, and whatever it
+ * transfers to, until the pc comes back to return_pc. A transfer to code with
+ * no translation -- or one that must stay interpreted -- is interpreted until
+ * it returns, reaches translated code again or calls the task syscall,
+ * instead of unwinding the whole task (spu_restart_dispatch), so a function
+ * with an indirect call can run translated (docs/PLANO0.6.1.md, N1). */
+extern SPU_THREAD_LOCAL uint32_t port_spu_interp_stop2;
+extern void spu_halt(spu_context*);
+void port_audio_drain(spu_context* ctx, uint32_t return_pc)
+{
+    const uint32_t ret = return_pc & SPU_LS_MASK;
+    for (;;) {
+        void (*tf)(spu_context*) = g_spu_trampoline_fn;
+        g_spu_trampoline_fn = 0;
+        ctx->pc &= SPU_LS_MASK;
+        const uint32_t pc = ctx->pc;
+        if (!tf || tf == spu_indirect_branch) {
+            if (pc == ret) return;
+            if (pc == SPURS_TASKSET_PM_SYSCALL_LS) {        /* as battride_audio_task */
+                spu_spurs_taskset_syscall(ctx);
+                ctx->pc = ctx->gpr[0]._u32[0] & SPU_LS_MASK;
+                continue;
+            }
+            tf = audio_compiled_ok(ctx, pc) ? spu_lifted_lookup(ctx, pc) : 0;
+        } else if (!audio_compiled_ok(ctx, pc)) {
+            tf = 0;
+        }
+        if (!tf) {
+            const uint32_t outer = port_spu_interp_stop2;
+            port_spu_interp_stop2 = SPURS_TASKSET_PM_SYSCALL_LS;
+            port_spu_interp_resume(ctx, pc, ret);
+            port_spu_interp_stop2 = outer;
+            if (ctx->status & (SPU_STATUS_STOPPED_BY_STOP | SPU_STATUS_STOPPED_BY_HALT)) {
+                spu_halt(ctx);
+                return;
+            }
+            continue;
+        }
+        if (ctx->int_enable && (ctx->event_status & ctx->event_mask))
+            tf = spu_take_interrupt(ctx, tf);
+        tf(ctx);
+    }
+}
+
 /* Run translated code from ctx->pc until it leaves translated code.
  * Returns with ctx->pc where interpretation continues. */
 static void audio_run_compiled(spu_context* ctx, spu_lifted_fn fn)

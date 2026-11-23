@@ -1215,6 +1215,18 @@ inesperada continuaria jogando com o interpretador, em vez de ficar sem build.
 > versões (`MP3_VERSIONS`); só a conferida está nela, e nenhuma outra é conhecida ainda. **Próximo (passo 4):** dar
 > a essas chamadas um caminho próprio do port, que roda o alvo traduzido ou, sem tradução, interpreta só o alvo até
 > o retorno, e então traduzir as 33 funções.
+>
+> **Passo 4 feito em 22/11 (tarefa de áudio).** O `lift_audio_spu.py` troca, no código traduzido da tarefa e dos
+> overlays, o `spu_drain_call` do runtime (e o resolvedor indireto dentro das chamadas) por `port_audio_drain`
+> (`spu_bridge.c`): ele roda o alvo traduzido e, onde não há tradução, interpreta só até o retorno, a próxima entrada
+> traduzida ou a syscall da tarefa (`0xA70`, segunda parada do interpretador, `port_spu_interp_stop2`), em vez de
+> desfazer a tarefa inteira. Só fica interpretada uma função com palavra que o tradutor não aceita. Resultado:
+> **0 funções da tarefa interpretadas** (eram 33), 366 entradas do MP3 e 72 do módulo como antes. Em STG02, 60 s,
+> GPU integrada: `PORT_SPU_MISS_LOG` vazio nas duas edições (a tradução antiga dá 18 entradas), 0 underruns em 938
+> blocos, 54,8 fps na normal e 54,7 na Premium. O áudio gravado (`AUDIO_WAV`, 119 s) tem o mesmo nível da tradução
+> antiga (RMS mediano 0,051 contra 0,050, mesmos 332 trechos de silêncio, sem NaN nem saturação).
+> `PORT_AUDIO_INTERPRET=1` continua interpretando tudo. Testes: `tests/test_lift_audio.py`. Falta: stg08 e um
+> capítulo com vídeo, e o ATRAC (passo 5).
 
 ### N2: shaders prontos antes de o jogo rodar (3–5 semanas)
 

@@ -435,6 +435,11 @@ uint32_t spu_interp_run_until(spu_context* ctx, uint32_t start_lsa, uint32_t sto
 /* As spu_interp_run_until, but interpret the instruction at start_lsa even
  * when a lifted function is registered there: for a caller that has decided
  * not to run that one compiled (spu_bridge.c). */
+/* A second address the interpreter stops at (0 = none), per thread: the audio
+ * task's call drain (spu_bridge.c, port_audio_drain) stops at both the return
+ * address and the task syscall. */
+SPU_THREAD_LOCAL uint32_t port_spu_interp_stop2;
+
 uint32_t port_spu_interp_resume(spu_context* ctx, uint32_t start_lsa, uint32_t stop_lsa) {
     return spu_interp_run_from(ctx, start_lsa, stop_lsa, 1);
 }
@@ -478,6 +483,7 @@ static uint32_t spu_interp_run_from(spu_context* ctx, uint32_t start_lsa, uint32
          * another image's functions that happen to share an LS address. */
         /* ponytail: pc-only match; a recursive call through the same site would stop early -- compare r1 too if one shows up. */
         if (ctx->image_id >= 0 && ((stop_lsa && ctx->pc == stop_lsa) ||
+                                   (port_spu_interp_stop2 && ctx->pc == port_spu_interp_stop2) ||
                                    (ctx->pc != seq_pc && spu_lifted_lookup(ctx, ctx->pc)))) { g_spu_interp_steps = steps; g_spu_interp_last_pc = ctx->pc; return ctx->pc; }  /* rejoin fast path */
         g_spu_interp_last_pc = ctx->pc;
         if (_g1>0) {

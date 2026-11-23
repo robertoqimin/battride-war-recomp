@@ -15,10 +15,12 @@ time; the sound broke up into short bursts. Two pieces of code do the work:
   0x36F80 the same way. Some stages run it on every audio block (chapter 4,
   stg08); interpreted, it took 29-39 ms a run and most blocks came too late.
 
-spu_bridge.c runs a translated function when the interpreter reaches one. A
-function stays interpreted when it could reach an indirect branch inside a
-call: the runtime's general dispatcher would resolve that, and it ends the
-task on code it has no translation for. A codec function also runs only
+spu_bridge.c runs a translated function when the interpreter reaches one. Calls
+inside translated code return through the port's own drain (port_audio_drain in
+spu_bridge.c, put here in place of the runtime's spu_drain_call): the runtime's
+would end the task on code it has no translation for, while the port's
+interprets that code until it returns. Only a function with a word the
+translator cannot handle stays interpreted. A codec function also runs only
 while local store still holds the codec's own instructions there.
 
 Writes <spu>/battride_audio/{task,mp3,module}/spu_recomp.[ch] and audio_task.h.
@@ -65,17 +67,34 @@ def lift(sdk: Path, image: Path, out: Path, prefix: str, extra: list[str]) -> st
                     '--auto-functions', str(image), '--merge-chunks',
                     '--symbol-prefix', prefix, '--output', str(out),
                     '--report', str(out / 'report.json'), *extra], check=True)
-    return (out / 'spu_recomp.c').read_text()
+    path = out / 'spu_recomp.c'
+    path.write_text(own_drains(path.read_text()))
+    return path.read_text()
+
+
+# A translated call: the callee (direct, or the runtime's indirect resolver),
+# then the drain back to the return address.
+INDIRECT_CALL = re.compile(r'spu_indirect_branch\(ctx\); spu_drain_call\(ctx, (0x[0-9A-Fa-f]+)\);')
+CALL_DRAIN = re.compile(r'spu_drain_call\(ctx, (0x[0-9A-Fa-f]+)\);')
+
+
+def own_drains(source: str) -> str:
+    """The translation with every call returning through port_audio_drain."""
+    source = INDIRECT_CALL.sub(r'port_audio_drain(ctx, \1);', source)
+    source = CALL_DRAIN.sub(r'port_audio_drain(ctx, \1);', source)
+    head, sep, rest = source.partition('\n\n')
+    return head + '\nvoid port_audio_drain(spu_context* ctx, uint32_t return_pc);' + sep + rest
 
 
 def compiled_entries(source: str, prefix: str) -> tuple[list[int], list[int]]:
-    """(entries safe to run, entries to keep interpreting).
+    """(entries safe to run, entries to keep interpreting), for a translation
+    after own_drains.
 
-    A translated indirect CALL invokes spu_indirect_branch() inside its call
-    bracket; an indirect transfer only queues it. spu_bridge.c follows queued
-    transfers of the function it runs, so those are fine at the top, but
-    anything inside a call bracket goes to the runtime's general dispatcher.
-    An untranslatable word anywhere makes the function interpreted too."""
+    Every call and transfer, direct or indirect, ends in port_audio_drain or in
+    a queued trampoline that spu_bridge.c follows, both of which interpret
+    what has no translation. What remains unsafe is a word the translator
+    could not handle (spu_unsupported) and any call left to the runtime's
+    resolver, in the function or in a callee it calls."""
     bodies = {int(m.group(1), 16): m.group(2) for m in re.finditer(
         rf'^void {prefix}spu_func_([0-9A-F]{{8}})\(spu_context\* ctx\) \{{\n(.*?)^\}}\n',
         source, re.S | re.M)}
@@ -85,8 +104,8 @@ def compiled_entries(source: str, prefix: str) -> tuple[list[int], list[int]]:
              for a, b in bodies.items()}
     tails = {a: {int(x, 16) for x in re.findall(rf'g_spu_trampoline_fn = {prefix}spu_func_([0-9A-F]{{8}})', b)}
              for a, b in bodies.items()}
-    call_ib = {a: 'spu_indirect_branch(ctx)' in b or 'spu_unsupported' in b for a, b in bodies.items()}
-    queued_ib = {a: 'g_spu_trampoline_fn = spu_indirect_branch' in b for a, b in bodies.items()}
+    call_ib = {a: 'spu_indirect_branch(ctx)' in b or 'spu_drain_call(' in b or 'spu_unsupported' in b
+               for a, b in bodies.items()}
     memo: dict[int, bool] = {}
 
     def nested_bad(a: int, stack: frozenset = frozenset()) -> bool:
@@ -97,7 +116,7 @@ def compiled_entries(source: str, prefix: str) -> tuple[list[int], list[int]]:
         if a not in bodies:
             memo[a] = True
             return True
-        bad = call_ib[a] or queued_ib[a] or any(nested_bad(x, stack | {a}) for x in calls[a] | tails[a])
+        bad = call_ib[a] or any(nested_bad(x, stack | {a}) for x in calls[a] | tails[a])
         memo[a] = bad
         return bad
 
