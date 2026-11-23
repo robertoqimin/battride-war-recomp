@@ -15,6 +15,7 @@ docs/FIRMWARE.md
 docs/ISSUES.md
 docs/PERFORMANCE.md
 docs/PUBLISHING.md
+docs/RENDERER.md
 docs/REQUIREMENTS.md
 docs/SAIL.md
 docs/WINDOWS.md
@@ -61,6 +62,7 @@ port/spu/spu_channels_bridge.c
 port/spu/spu_coherency_bridge.c
 port/spu/spu_interp_bridge.c
 recompile.json
+scripts/analysis/gcm_map.py
 scripts/build/build_fsr1_shaders.py
 scripts/build/export_source.py
 scripts/build/generate.py
@@ -85,6 +87,7 @@ tests/test_frame_report.py
 tests/test_fs_offset.cpp
 tests/test_gcm_jump.c
 tests/test_gcm_jump.sh
+tests/test_gcm_map.py
 tests/test_generate.py
 tests/test_graphics_buffers.cpp
 tests/test_graphics_buffers.sh

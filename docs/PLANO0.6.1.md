@@ -1278,6 +1278,15 @@ entrar numa fase nova.
 O código traduzido depende da semântica do RSX (semáforos, labels, reports, flip): cada passe precisa manter isso. É
 a parte mais longa e de maior risco, e quase não muda o fps (a thread de render não é o limite).
 
+> **Passo 1 começado em 23/11.** `scripts/analysis/gcm_map.py` lê o código traduzido e acha, em cada função, os
+> cabeçalhos de comando que o jogo monta (`lis` com o `count`, `ori` com o método NV4097), e quem a chama. Nas duas
+> edições: **32 das ~19 mil funções escrevem comandos**, e todos os desenhos do jogo passam por **3** delas
+> (`func_00456548`, `DRAW_ARRAYS`, 9 chamadores; `func_00456B38` e `func_005B4718`, indexados). O resto é passe
+> (alvos de render, limpeza, viewport) e material (shaders, blend, stencil, alpha, cull). As 32 são as mesmas na
+> Premium, com os endereços deslocados. Mapa e endereços em `docs/RENDERER.md`. Falta no mapa: métodos calculados a
+> partir de um índice (texturas, constantes) e os comandos da `libgcm`; depois, medir em jogo o que cada função de
+> desenho desenha e ler os argumentos delas (malha, material, alvo).
+
 ### N4 (pontual): sair do modelo de máquina do PS3
 
 Não como meta. Só as funções mais quentes que o perfil apontar, reescritas à mão com estruturas do host e conversão
