@@ -1036,6 +1036,18 @@ para a edição normal: deixa o port mais robusto a qualquer mudança do lifter.
 > cada um é reconhecido como a sua edição. Ainda não foi feita uma importação completa da Premium, com extração e
 > descriptografia: fica para a E5, com a primeira tradução dela.
 
+> **Primeira tradução da Premium (22/11).** Numa cópia separada (`git worktree`), o SDK fixado gera 117 chunks
+> (a normal tem 84). O lifter divide o EBOOT da Premium em mais funções (19.376 contra 18.864) e passa parte dos
+> dados do fim do `.text` como código; as funções do jogo saem equivalentes, só com outros endereços e offsets de
+> TOC. O build completo com `-j2` levou 29 min, com no mínimo 6,4 GB livres. O CMake usou os endereços da Premium
+> (busca `func_004B69A0`, limitador `func_003AD6A0`) nos mesmos números de chunk da normal. **Ela roda até a luta:**
+> 50,8 fps em STG02 na GPU integrada, contra 46–48 da normal. Ela instala `BLJS10219DATA`, aceita o save da edição
+> normal (conferido também no RPCS3, que vai para o vídeo e o menu com o mesmo save) e carrega
+> `BGM/PREMIUM/PREMIUM.lst`. Uma tela branca depois dos logos era da montagem do teste: `PS3_GAME` era um link
+> simbólico para fora da pasta do jogo, e o `sail_bridge.cpp` recusa um vídeo que resolva para fora da raiz
+> (`path_from_uri`). O importer extrai arquivos reais, então o jogador não passa por isso. Fica para a E5 escolher
+> as músicas no menu "Custom Soundtrack" e ouvi-las numa fase.
+
 ### E4: perfis de PGO (horas)
 
 Os perfis são por chunk e por função: os da edição normal não casam com os chunks da Premium. Um segundo conjunto,

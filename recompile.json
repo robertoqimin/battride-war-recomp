@@ -30,7 +30,7 @@
       "title_id": "BLJS10219",
       "name": "Kamen Rider Battride War Premium TV Sound Edition",
       "eboot_sha256": "72e1e4cb19f467358e6c25e8b09b6fb0c6a0f230f4ef8bd6427470fcbb4e01d8",
-      "ppu_chunks": null,
+      "ppu_chunks": 117,
       "arena_hook_return": "0x0045D4E4",
       "memmove": "0x003712F4",
       "chunk_anchors": {
