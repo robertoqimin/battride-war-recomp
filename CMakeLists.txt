@@ -86,6 +86,8 @@ set(PORT_TITLE_ID "BLJS10220")
 set(PORT_FN_NATIVE_LOOKUP "func_004B5120")
 set(PORT_FN_FRAME_LIMITER "func_003ABE20")
 set(PORT_GUEST_MEMMOVE "0x0036FA74")
+set(PORT_TOC_EFFECT_MANAGER "0x3790")
+set(PORT_TOC_PRIMITIVE_TABLE "0x3800")
 set(PORT_CHUNK_NATIVE_LOOKUP "029")
 set(PORT_CHUNK_FRAME_LIMITER "013")
 set(PORT_CHUNK_HOT_O3 "029")
@@ -700,6 +702,9 @@ if((PORT_DRAW_PROBE OR PORT_NATIVE_PASS) AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CX
     endforeach()
     file(WRITE "${probe_dir}/draw_wrappers.cpp" "${probe_cpp}")
     target_sources(${PROJECT_NAME} PRIVATE "${probe_dir}/draw_wrappers.cpp")
+    set_property(SOURCE "${PORT_SRC}/graphics/native_pass.cpp" "${PORT_SRC}/core/draw_probe.cpp" APPEND PROPERTY
+                 COMPILE_DEFINITIONS "PORT_TOC_EFFECT_MANAGER=${PORT_TOC_EFFECT_MANAGER}"
+                                     "PORT_TOC_PRIMITIVE_TABLE=${PORT_TOC_PRIMITIVE_TABLE}")
     if(PORT_DRAW_PROBE)
         target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/draw_probe.cpp")
     endif()

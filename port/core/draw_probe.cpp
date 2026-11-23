@@ -155,7 +155,10 @@ static void dump_effect_op(unsigned op, unsigned record, unsigned toc)
     std::string out;
     char buf[200];
     const uint32_t handle = vm_read32(record + 8);
-    const uint32_t mgr = vm_read32(vm_read32(toc + 0x3790));
+#ifndef PORT_TOC_EFFECT_MANAGER
+#define PORT_TOC_EFFECT_MANAGER 0x3790   /* BLJS10220 */
+#endif
+    const uint32_t mgr = vm_read32(vm_read32(toc + PORT_TOC_EFFECT_MANAGER));
     std::snprintf(buf, sizeof buf, "[effect-dump] op%u record %08X: %08X %08X %08X %08X  manager %08X handle %08X\n",
                   op, record, vm_read32(record), vm_read32(record + 4), handle, vm_read32(record + 12), mgr, handle);
     out += buf;

@@ -12,6 +12,8 @@
       "ppu_chunks": 84,
       "arena_hook_return": "0x0045BC64",
       "memmove": "0x0036FA74",
+      "toc_effect_manager": "0x3790",
+      "toc_primitive_table": "0x3800",
       "chunk_anchors": {
         "native_lookup": "func_004B5120",
         "frame_limiter": "func_003ABE20",
@@ -40,6 +42,8 @@
       "ppu_chunks": 117,
       "arena_hook_return": "0x0045D4E4",
       "memmove": "0x003712F4",
+      "toc_effect_manager": "0x3818",
+      "toc_primitive_table": "0x3888",
       "chunk_anchors": {
         "native_lookup": "func_004B69A0",
         "frame_limiter": "func_003AD6A0",

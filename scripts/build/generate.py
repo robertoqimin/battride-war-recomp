@@ -89,6 +89,10 @@ def chunk_map(ppu, anchors, edition=None):
         out.append('set(PORT_FN_NATIVE_LOOKUP "%s")' % anchors['native_lookup'])
         out.append('set(PORT_FN_FRAME_LIMITER "%s")' % anchors['frame_limiter'])
         out.append('set(PORT_GUEST_MEMMOVE "0x%08X")' % int(edition['memmove'], 16))
+        # TOC offsets the native renderer pass reads (docs/RENDERER.md): the
+        # effect manager and the draw's primitive table.
+        out.append('set(PORT_TOC_EFFECT_MANAGER "0x%X")' % int(edition['toc_effect_manager'], 16))
+        out.append('set(PORT_TOC_PRIMITIVE_TABLE "0x%X")' % int(edition['toc_primitive_table'], 16))
     (ppu / 'port_chunks.cmake').write_text('\n'.join(out) + '\n')
     return where
 

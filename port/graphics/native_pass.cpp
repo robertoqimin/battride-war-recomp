@@ -37,6 +37,14 @@
 extern "C" uint32_t vm_read32(uint64_t addr);
 extern "C" void vm_write32(uint64_t addr, uint32_t value);
 
+/* The edition's TOC offsets (recompile.json, set by CMake). */
+#ifndef PORT_TOC_EFFECT_MANAGER
+#error "PORT_TOC_EFFECT_MANAGER: the TOC offset of the effect manager (set by CMake)"
+#endif
+#ifndef PORT_TOC_PRIMITIVE_TABLE
+#error "PORT_TOC_PRIMITIVE_TABLE: the TOC offset of the draw's primitive table (set by CMake)"
+#endif
+
 namespace {
 
 /* Engine command opcodes (docs/RENDERER.md). */
@@ -154,8 +162,8 @@ extern "C" void port_native_engine_command(unsigned op, unsigned record, unsigne
     g_toc = toc;
     switch (op) {
     case OP_EFFECT: {
-        /* manager *(TOC+0x3790); effect table at +0x5C (count at +0x64); handle = effect << 16 */
-        const uint32_t mgr = vm_read32(vm_read32(toc + 0x3790));
+        /* manager *(TOC+PORT_TOC_EFFECT_MANAGER); effect table at +0x5C (count at +0x64); handle = effect << 16 */
+        const uint32_t mgr = vm_read32(vm_read32(toc + PORT_TOC_EFFECT_MANAGER));
         const uint32_t handle = vm_read32(record + 8), table = vm_read32(mgr + 0x5C);
         g_effect.clear(); g_effect_object = 0;
         if (guest_ptr(mgr) && guest_ptr(table) && (handle >> 16) < vm_read32(mgr + 0x64)) {
@@ -184,7 +192,7 @@ namespace {
 
 uint32_t rsx_primitive(unsigned engine_prim)       /* the draw's own table, *(TOC+0x3800) */
 {
-    const uint32_t table = g_toc ? vm_read32(g_toc + 0x3800) : 0;
+    const uint32_t table = g_toc ? vm_read32(g_toc + PORT_TOC_PRIMITIVE_TABLE) : 0;
     return guest_ptr(table) && engine_prim < 8 ? vm_read32(table + engine_prim * 4) : 0;
 }
 
