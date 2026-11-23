@@ -186,7 +186,9 @@ do que o jogo desenha muda.
 Resultado, GPU integrada: título, menu principal, tela de configuração da missão e o HUD da luta (retrato, barra de
 vida, minimapa, estilo, painel de tutorial) **iguais** aos do motor RSX. ~3.700 desenhos nativos por segundo no
 título, ~8.800 nos menus, ~7.300 na luta; o resto (tela cheia, outros efeitos e formatos) continua com o jogo.
-Diagnóstico: `PORT_NATIVE_PASS=hud-both` (o nativo e o do jogo, um sobre o outro) e `PORT_NATIVE_DEBUG=1|2|3`
+Custo, STG02 60 s, GPU integrada, máquina livre: sem os ganchos 51,4 fps (busy 18,48 ms); com os ganchos e o passe
+desligado 51,3 (18,56); **com o passe nativo 52,0 (18,26)**, p95 23,2 ms nos três: o PPU deixa de montar os comandos
+RSX dos sprites. Diagnóstico: `PORT_NATIVE_PASS=hud-both` (o nativo e o do jogo, um sobre o outro) e `PORT_NATIVE_DEBUG=1|2|3`
 (magenta, só textura, só cor). O que custou achar: o vertex shader embutido do motor declara os 16 atributos, e com
 o layout compacto a cor e a UV caíam nas entradas erradas; e sem o flush do jogo o alvo de render nunca era ligado.
 
