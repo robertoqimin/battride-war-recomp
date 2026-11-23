@@ -1300,6 +1300,12 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > gravam campos do dispositivo, e com várias op5 (estado de render). As operações só guardam estado; o desenho o lê e
 > emite os comandos RSX. O passe nativo entra no desenho, em cima desse dispositivo. Tabela em `docs/RENDERER.md`.
 > Próximo: decodificar os campos do dispositivo e as operações de textura e shader.
+>
+> **Dispositivo, primeira leitura (23/11).** `PORT_DRAW_DUMP` despeja o dispositivo e os objetos para que ele aponta
+> nas primeiras chamadas de cada lugar que desenha. Decodificado: a tela (1280×720), o alvo de render atual, a
+> declaração de vértices, o endereço dos vértices de cada desenho e o buffer de comandos RSX. Um sprite são 6 vértices
+> de 24 bytes (posição float3, cor RGBA8, UV float2), num buffer circular da memória principal. Falta a ligação de
+> textura e de shader.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 

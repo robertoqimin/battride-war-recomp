@@ -104,12 +104,34 @@ objetos do motor com tabela virtual), e só o desenho (op9) lê esse estado e em
 substitui o desenho em cima desse dispositivo**: ler os buffers, texturas, shaders e o estado que ele guarda e
 desenhar em Vulkan, em vez de deixar `func_00456548` montar comandos do PS3.
 
+## O dispositivo de render (23/11, em decodificação)
+
+`PORT_DRAW_DUMP=<n>` (com `PORT_DRAW_PROBE`) registra, nas primeiras n chamadas de cada lugar que desenha, os
+argumentos, os primeiros 0x200 bytes do dispositivo e o começo de cada objeto para que ele aponta. O desenho recebe
+`r3` = dispositivo, `r4` = tipo de primitiva do motor, `r5` = primeiro vértice, `r6` = quantidade. Visto até aqui:
+
+| Campo | Conteúdo |
+|---|---|
+| `+0x00`, `+0x08` | tabelas virtuais (a classe do dispositivo, uma interface) |
+| `+0xB0`, `+0xB4` | largura e altura da tela (1280, 720) |
+| `+0xC0` | objeto de superfície (endereço na memória do RSX, 1280×720): o alvo de render atual |
+| `+0xCC` | declaração de vértices: objeto com a lista de elementos (tipo, uso, deslocamento) |
+| `+0xD4` | flags do desenho (0 no passe de tela cheia, `0x101`/`0x109` nos sprites) |
+| `+0xD8` | buffer de vértices fixo (endereço na memória do RSX, tamanho, contagem), no passe de tela cheia |
+| `+0xDC` | endereço dos vértices deste desenho: memória do RSX no passe de tela cheia, um buffer circular na memória principal nos sprites |
+| `+0x100`…`+0x10C` | o buffer de comandos RSX (início, fim, posição atual) |
+
+Um sprite é desenhado como 6 vértices (dois triângulos) de **24 bytes**: posição em float3, cor RGBA8 e coordenada de
+textura em float2. O passe de tela cheia usa 4 vértices de um buffer fixo. A textura não está nesses campos:
+deve vir das operações 35/32 (a decodificar).
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
-2. Decodificar o dispositivo: o que ficam nos campos `+0xCC`…`+0xF4` (fluxos de vértices, índices), as operações
-   35, 32 e 36–45 (texturas, shaders, constantes) e os objetos para que apontam.
+2. Terminar o dispositivo: a ligação de textura e de shader (operações 35, 32 e 36–45) e o formato exato da
+   declaração de vértices; com isso, desenhar um sprite em Vulkan a partir só do estado do dispositivo e comparar com
+   o motor RSX.
 3. Ler os argumentos das funções de desenho (as estruturas do motor: malha, material, alvo) e escrever o primeiro
    passe nativo atrás de `PORT_NATIVE_PASS=hud`, com o mecanismo de símbolo fraco da busca nativa e o motor RSX como
    referência para comparar a imagem.
