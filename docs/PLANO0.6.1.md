@@ -1339,6 +1339,13 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > (~7.500/s); com o jogo ficam os filtros (`SH_BLOOMFAKE_*`, DOF, FXAA, gauss, radial blur), `SH_MATERIAL_SHADOW_P` e
 > o quadro de cor de tela cheia (fica branco e opaco por cima dos logos, a entender). Custo: 49,7 fps contra 48,9
 > com o passe desligado.
+>
+> **Filtros de tela cheia, 23/11.** O motor passou a escolher o shader pelo programa de fragmento que o flush do jogo
+> ligou (hash estrutural), não pelo nome do efeito, que fica velho nos passes de tela cheia (era isso o "quadro
+> branco": uma cópia de textura). Shaders escritos à mão para 13 programas: sprites, cópia, bloom, profundidade de
+> campo, gauss 5×5, radial blur e FXAA; qualquer outro é desenhado do mesmo registro com a tradução do programa do
+> jogo. Nas duas edições, a rota inteira sai igual ao motor RSX com **nenhum desenho do caminho 2D com o jogo**. Custo
+> neutro (52,7 contra 53,1 fps, dentro da variação). Detalhes em `docs/RENDERER.md`.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 

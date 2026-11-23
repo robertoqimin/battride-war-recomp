@@ -235,13 +235,58 @@ blur. STG02 60 s: 48,9 fps com o passe desligado, **49,7** com ele (máquina mai
 Diagnóstico: `PORT_NATIVE_EFFECTS=<lista>` limita os efeitos nativos; `PORT_NATIVE_DEBUG` registra o programa de
 cada efeito e, nos passes de tela cheia, os arrays de vértice e o estado.
 
+## Passe nativo: o shader pelo programa ligado, e os filtros de tela cheia (23/11)
+
+**O nome do efeito não serve nos passes de tela cheia.** `PORT_NATIVE_PROBE=<n>` grava, depois de um desenho que o
+jogo fez, um `NO_OPERATION` `0xBA7D0000 | efeito`, e o motor descreve o que o desenho usou (programa, unidades de
+textura, constantes, alvo, arrays de vértice). Mostrou que a op32 fica velha nos passes de tela cheia: o "quadro de
+cor" branco era na verdade a **cópia de textura** (programa `0x01221000`) de um alvo de render, e o motor desenhava
+cor pura porque confiava no nome.
+
+**O motor escolhe pelo programa.** No marcador, o motor pega o par de programas que o flush do jogo ligou
+(`eng_pipeline_get`: tradução em cache, hash estrutural do programa de fragmento, unidades amostradas, constantes) e:
+
+- se o hash está em `kEngNativePrograms`, desenha com o shader escrito à mão para aquele programa, com as constantes e
+  texturas do jogo (`C[i]`, `S(unidade, uv)`, `L(uv, lod)`);
+- se não, desenha o mesmo registro com a tradução do programa do jogo, com o layout de vértices que o vertex program
+  dele lê (`eng_vertex_layout`; o layout fixo de três atributos punha a UV no lugar da cor). Isso é a rede de
+  segurança; com `PORT_NATIVE_DEBUG` cada programa novo que cai nela é registrado.
+
+O PPU não filtra mais pelo efeito: lê a declaração de vértices de forma genérica (posição float3, cor de 4 bytes tipo
+9 ou 5, coordenada float2) e aceita lista, *strip* e leque.
+
+**Programas com shader nativo** (os hashes são iguais nas duas edições):
+
+| Programa | O que faz |
+|---|---|
+| `b232746bc7864749` | sprite: textura × cor |
+| `b9a97ce6812306eb` | sprite: cor |
+| `0a9d5f2af539481f` | sprite: cor escurecida pela textura, textura no alvo 1 |
+| `0a5f2826bc7492d5` | cópia de textura (composições, vídeo) |
+| `4aee957cd2006214` | bloom: realce (limiar `C0.x`) |
+| `eb9e84f065412dac` | bloom: redução de 4 amostras |
+| `38d60a2ecfc7e46f` | bloom: composição com a cena |
+| `fc192b89a2eade06` | profundidade de campo: fator de desfoque pela profundidade |
+| `9e5442311c2e6b9f` | profundidade de campo: redução de 4 amostras |
+| `95e5e66b86551cae` | profundidade de campo: mistura nítida/desfocada |
+| `e721c77062f5c3b6` | gauss 5×5 (13 amostras, deslocamento e peso nas constantes) |
+| `a2f8fe6ed13c85ad` | radial blur (até 16 amostras em direção ao centro) |
+| `cb6f65c49800f61d` | FXAA 3.11, variante de console |
+
+Resultado, GPU integrada, edição normal e Premium: logos, vídeo, título, menus, configuração da missão, cutscene com
+profundidade de campo e luta iguais ao motor RSX, e **nenhum desenho do caminho 2D com o jogo** (antes ~360/s na luta,
+~900/s nas cenas); nenhum programa caiu na tradução nessa rota. `PORT_NATIVE_PROGRAMS=none` (tudo pela tradução)
+também sai igual, o que valida a rede de segurança. STG02 60 s: 52,7 fps com o passe e 53,1 sem, numa segunda
+medição (a primeira deu 57,4 contra 51,8; a variação entre execuções é dessa ordem): custo neutro. O radial blur ainda
+não foi comparado quadro a quadro (aparece pouco na rota).
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
 2. Mapear os campos de estado de render que a op5 grava no dispositivo (blend, alpha, depth, cull).
-3. Os filtros de tela cheia (`SH_BLOOMFAKE_*`, DOF, FXAA, gauss, radial blur) e `SH_MATERIAL_SHADOW_P`, que usam
-   constantes do efeito (op41) e mais de uma textura; e entender o quadro de cor de tela cheia.
+3. Cobrir mais telas (galeria, loja, briefing, outras fases) com `PORT_NATIVE_DEBUG`, escrevendo à mão os programas
+   que caírem na tradução.
 4. Ligar a opção `PORT_NATIVE_PASS` no build por padrão, com o passe ainda escolhido em tempo de execução, depois de
    cobrir mais telas (galeria, loja, briefing) e o HUD de mais fases.
 5. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.
