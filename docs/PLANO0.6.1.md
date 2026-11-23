@@ -1323,6 +1323,12 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > op5 o emite direto no buffer RSX. Validado nos menus e na luta: ~4 mil desenhos 2D por segundo, a maioria com
 > `SH_PRETRANS_TEX_COL_P`, texturas só DXT1/3/5. Etapas seguintes: desenhar os registros numa imagem à parte e
 > comparar com o quadro do motor RSX; depois, o marcador no buffer de comandos que troca o desenho na ordem certa.
+>
+> **Etapa 3 (substituição) feita em 23/11; a etapa 2 ficou desnecessária**, porque a comparação passou a ser direta
+> (passe ligado e desligado, mesma tela). `PORT_NATIVE_PASS=hud`: o desenho do jogo dá lugar a um `NO_OPERATION`
+> marcado no buffer de comandos, depois do flush de estado do próprio jogo, e o motor RSX desenha o registro nativo
+> nesse ponto da sequência, com shader e vértices próprios e a textura pelo seu cache. Título, menus e HUD da luta
+> saem iguais ao motor RSX; ~4 a 9 mil desenhos nativos por segundo. Detalhes em `docs/RENDERER.md`.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 

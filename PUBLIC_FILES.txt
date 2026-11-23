@@ -21,6 +21,7 @@ docs/SAIL.md
 docs/WINDOWS.md
 docs/WINDOWS_PACKAGE.md
 include/port_frame_limiter.h
+include/port_native_pass.h
 include/port_ppu_memory.h
 include/port_ppu_native.h
 include/port_ppu_store_gate.h

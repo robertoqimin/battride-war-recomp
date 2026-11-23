@@ -169,13 +169,34 @@ do que o jogo desenha muda.
 - Exemplo: sprite de 6 vértices, textura DXT5 512×256 em `0x033F4000`, primeiro vértice (-0,400, 0,356, 1,0), cor
   branca, UV (0, 0).
 
+## Passe nativo do 2D, etapa 3: substituição (23/11)
+
+`PORT_NATIVE_PASS=hud` (no build com a opção `PORT_NATIVE_PASS`). Um desenho do caminho 2D com o efeito
+`SH_PRETRANS_TEX_COL_P`, textura DXT1/3/5 e a declaração de vértices dos sprites não roda como código do jogo:
+
+1. **PPU** (`native_pass.cpp`): o registro (triângulos já no layout do host, textura, sampler) vai para uma fila; o
+   wrapper roda o flush de estado do próprio jogo (`func_00455E08`, âncora `draw_flush`: é ele que liga o alvo de
+   render, de forma preguiçosa) e grava no buffer de comandos, no lugar do desenho, um `NO_OPERATION` com
+   `0xBA7E0000 | id`. Sem espaço no segmento, o desenho do jogo roda.
+2. **Motor RSX** (`rsx_engine_bridge.c`, `eng_native_draw`): ao chegar no marcador, desenha o registro com o alvo, o
+   estado de render, o viewport e o scissor daquele ponto da sequência; shader próprio (vértice: só os atributos
+   0, 3 e 8, para casar com o layout compacto; fragmento: `textura × saturate(cor)` e o alpha test do estado RSX); a
+   textura pelo cache do motor.
+
+Resultado, GPU integrada: título, menu principal, tela de configuração da missão e o HUD da luta (retrato, barra de
+vida, minimapa, estilo, painel de tutorial) **iguais** aos do motor RSX. ~3.700 desenhos nativos por segundo no
+título, ~8.800 nos menus, ~7.300 na luta; o resto (tela cheia, outros efeitos e formatos) continua com o jogo.
+Diagnóstico: `PORT_NATIVE_PASS=hud-both` (o nativo e o do jogo, um sobre o outro) e `PORT_NATIVE_DEBUG=1|2|3`
+(magenta, só textura, só cor). O que custou achar: o vertex shader embutido do motor declara os 16 atributos, e com
+o layout compacto a cor e a UV caíam nas entradas erradas; e sem o flush do jogo o alvo de render nunca era ligado.
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
 2. Mapear os campos de estado de render que a op5 grava no dispositivo (blend, alpha, depth, cull).
-3. Etapa 2: desenhar os registros capturados numa imagem à parte, em Vulkan (shader próprio para
-   `SH_PRETRANS_TEX_COL_P`, texturas BC lidas da memória do RSX), e comparar com o quadro do motor RSX nos menus.
-4. Etapa 3: no lugar do desenho, um marcador no buffer de comandos RSX que o motor troca pelo desenho nativo na mesma
-   posição da sequência (`PORT_NATIVE_PASS=hud`).
+3. Estender o passe nativo aos outros efeitos do 2D (`SH_PRETRANS_TEX_COL_MUL_P`, `SH_PRETRANS_COL_P`, os filtros
+   `SH_BLOOMFAKE_*`), aos formatos de textura não comprimidos e às texturas que são alvos de render, e aos passes de
+   tela cheia (declaração de 20 bytes).
+4. Medir o desempenho com o passe ligado e testar a Premium; depois, ligar a opção no build por padrão.
 5. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.

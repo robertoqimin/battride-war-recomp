@@ -13,7 +13,16 @@
  * cull) is not tracked: the engine emits it into the RSX command stream as it
  * goes (op5 -> func_004689A0), where the RSX engine sees it.
  *
- * Nothing here changes what the game draws yet. */
+ * Stage 3, PORT_NATIVE_PASS=hud: a draw of the 2D path with the textured
+ * effect (SH_PRETRANS_TEX_COL_P, a DXT texture) is not run as the game's own
+ * code. Its record -- triangles in the host's vertex layout, the texture and
+ * the sampler -- goes into a host queue, and in the game's RSX command buffer,
+ * where the draw's commands would have gone, a NO_OPERATION carrying the
+ * record's id. The RSX engine draws the record when it reaches that word
+ * (rsx_engine_bridge.c, eng_native_draw), so it lands between the same
+ * neighbours with the render state (blend, depth, scissor) the engine had
+ * emitted by then. Anything else, or a full command segment, runs the game's
+ * draw as before. */
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -23,8 +32,10 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include "port_native_pass.h"
 
 extern "C" uint32_t vm_read32(uint64_t addr);
+extern "C" void vm_write32(uint64_t addr, uint32_t value);
 
 namespace {
 
@@ -54,7 +65,11 @@ struct Stats {
 };
 
 std::mutex g_mu;
-int g_mode = -1;                                 /* 0 off, 1 capture */
+int g_mode = -1;                                 /* 0 off, 1 capture, 2 hud (draw natively) */
+constexpr unsigned kRing = 4096;                 /* records in flight between the PPU and the RSX engine */
+port_native_record* g_ring;                      /* kRing records */
+uint32_t g_next_id, g_pending;
+unsigned long g_native, g_fallback;
 double g_period = 5;
 uint32_t g_toc = 0;
 std::string g_effect;                            /* the effect op32 selected */
@@ -74,6 +89,10 @@ int mode()
             g_mode = 1;
             if (e[7] == ':') g_period = std::atof(e + 8);
             if (g_period <= 0) g_period = 5;
+        } else if (e && (!std::strcmp(e, "hud") || !std::strcmp(e, "hud-both"))) {
+            /* hud-both, a diagnostic: the native draw and the game's own, one over the other */
+            g_ring = static_cast<port_native_record*>(std::calloc(kRing, sizeof(port_native_record)));
+            g_mode = g_ring ? (e[3] ? 3 : 2) : 0;
         }
         g_t0 = std::chrono::steady_clock::now();
     }
@@ -161,12 +180,129 @@ extern "C" void port_native_engine_command(unsigned op, unsigned record, unsigne
     }
 }
 
-/* A draw of the 2D path: r3 the render device, r4 primitive, r5 first
- * vertex, r6 count; the vertices at device+0xDC. */
-extern "C" void port_native_draw(unsigned r3, unsigned r4, unsigned r5, unsigned r6)
+namespace {
+
+uint32_t rsx_primitive(unsigned engine_prim)       /* the draw's own table, *(TOC+0x3800) */
+{
+    const uint32_t table = g_toc ? vm_read32(g_toc + 0x3800) : 0;
+    return guest_ptr(table) && engine_prim < 8 ? vm_read32(table + engine_prim * 4) : 0;
+}
+
+void unpack_rgba(uint32_t w, float* out)
+{
+    out[0] = (w >> 24) / 255.f; out[1] = ((w >> 16) & 255) / 255.f;
+    out[2] = ((w >> 8) & 255) / 255.f; out[3] = (w & 255) / 255.f;
+}
+
+/* Stage 3: build the record and put its marker in the command stream; false
+ * when the game's own draw has to run. */
+bool draw_natively(unsigned r3, unsigned r4, unsigned r5, unsigned r6)
+{
+    if (g_effect != "SH_PRETRANS_TEX_COL_P" || !r6 || r6 > PORT_NATIVE_MAX_VERTS / 2) return false;
+    const auto t = g_textures.find(0x8D);         /* the global sampler S_Simple */
+    if (t == g_textures.end()) return false;
+    const uint32_t fmt = t->second.gcm[0] >> 24;
+    if ((fmt & 0x9Fu) != 0x86u && (fmt & 0x9Fu) != 0x87u && (fmt & 0x9Fu) != 0x88u) return false;   /* DXT1/3/5 */
+    const uint32_t prim = rsx_primitive(r4);
+    if (prim != 5 && prim != 7) return false;    /* triangles, fan */
+    /* Only the sprite vertex declaration (device+0xCC): position, colour,
+     * texture coordinate in 24 bytes. Others -- the full-screen passes' 20-byte
+     * position and texture coordinate -- stay with the game for now. */
+    static const uint32_t kSpriteDecl[11] = { 1, 3, 0, 0, 7, 9, 0xC, 0, 8, 2, 0x10 };
+    const uint32_t decl = vm_read32(r3 + 0xCC);
+    if (!guest_ptr(decl)) return false;
+    for (unsigned i = 0; i < 11; i++) if (vm_read32(decl + 4 + i * 4) != kSpriteDecl[i]) return false;
+    /* the command segment: device+0x108 -> { begin, end, current } */
+    const uint32_t seg = vm_read32(r3 + 0x108);
+    if (!guest_ptr(seg)) return false;
+    const uint32_t cur = vm_read32(seg + 8), end = vm_read32(seg + 4);
+    if (!guest_ptr(cur) || cur + 8 > end) return false;
+
+    const uint32_t id = g_next_id++ & 0xFFFFu;
+    port_native_record& rec = g_ring[id % kRing];
+    rec.textured = 1;
+    const uint32_t* gcm = t->second.gcm;
+    rec.tex_format = fmt;
+    rec.tex_levels = (gcm[0] >> 16) & 0xFF;
+    rec.tex_remap = gcm[1];
+    rec.tex_width = gcm[2] >> 16; rec.tex_height = gcm[2] & 0xFFFF;
+    rec.tex_location = (gcm[3] >> 8) & 0xFF;
+    rec.tex_pitch = gcm[4]; rec.tex_offset = gcm[5];
+    const auto& smp = g_samplers[0x8D];
+    auto get = [&](uint32_t i, uint32_t dflt) { auto it = smp.find(i); return it == smp.end() ? dflt : it->second; };
+    rec.wrap_s = (uint8_t)get(0, 3); rec.wrap_t = (uint8_t)get(1, 3);
+    rec.min_linear = get(4, 2) == 2; rec.mag_linear = get(5, 2) == 2;
+
+    const uint32_t base = vm_read32(r3 + 0xDC) + r5 * kVertexBytes;
+    auto emit = [&](unsigned i) {
+        const uint32_t v = base + i * kVertexBytes;
+        float* o = &rec.vertices[(size_t)rec.vertex_count++ * 12];
+        o[0] = as_float(vm_read32(v)); o[1] = as_float(vm_read32(v + 4)); o[2] = as_float(vm_read32(v + 8)); o[3] = 1.f;
+        unpack_rgba(vm_read32(v + 12), o + 4);
+        o[8] = as_float(vm_read32(v + 16)); o[9] = as_float(vm_read32(v + 20)); o[10] = 0.f; o[11] = 1.f;
+    };
+    rec.vertex_count = 0;
+    if (prim == 5) {
+        for (unsigned i = 0; i < r6; i++) emit(i);
+        rec.vertex_count -= rec.vertex_count % 3;
+    } else {
+        for (unsigned i = 1; i + 1 < r6; i++) { emit(0); emit(i); emit(i + 1); }
+    }
+    g_pending = id;
+    return true;
+}
+
+/* After the game's state flush (func_00455E08: it binds the render target and
+ * the rest lazily, at the draw), the marker: NO_OPERATION, count 1, carrying
+ * the id, at the segment's write pointer, which moves past it. */
+bool commit_marker(unsigned r3)
+{
+    const uint32_t seg = vm_read32(r3 + 0x108);
+    if (!guest_ptr(seg)) return false;
+    const uint32_t cur = vm_read32(seg + 8), end = vm_read32(seg + 4);
+    if (!guest_ptr(cur) || cur + 8 > end) return false;
+    vm_write32(cur, 0x00040100u);
+    vm_write32(cur + 4, PORT_NATIVE_MARK | g_pending);
+    vm_write32(seg + 8, cur + 8);
+    return true;
+}
+
+}  // namespace
+
+/* hud: called by the draw wrapper after it ran the game's state flush; false
+ * when the marker did not fit and the game's draw must run after all. */
+extern "C" int port_native_commit(unsigned r3)
 {
     std::lock_guard<std::mutex> lock(g_mu);
-    if (!mode()) return;
+    if (commit_marker(r3)) return 1;
+    g_native--; g_fallback++;
+    return 0;
+}
+
+extern "C" const port_native_record* port_native_take(uint32_t id)
+{
+    return g_ring ? &g_ring[(id & 0xFFFFu) % kRing] : nullptr;
+}
+
+/* A draw of the 2D path: r3 the render device, r4 primitive, r5 first
+ * vertex, r6 count; the vertices at device+0xDC. Returns 1 when it was drawn
+ * natively and the game's draw must not run. */
+extern "C" int port_native_draw(unsigned r3, unsigned r4, unsigned r5, unsigned r6)
+{
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (!mode()) return 0;
+    if (g_mode >= 2) {
+        bool done = draw_natively(r3, r4, r5, r6);
+        if (done && g_mode == 3 && !commit_marker(r3)) done = false;   /* hud-both: no flush needed */
+        (done ? g_native : g_fallback)++;
+        const auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration<double>(now - g_t0).count() >= 5) {
+            std::fprintf(stderr, "[native-pass] hud: %lu draws native, %lu by the game, in 5 s\n", g_native, g_fallback);
+            g_native = g_fallback = 0;
+            g_t0 = now;
+        }
+        return done && g_mode == 2 ? 1 : 0;
+    }
     g_stats.draws++;
     if (g_effect != "SH_PRETRANS_TEX_COL_P" || !r6 || r6 > kMaxVertices) {
         g_stats.effects[g_effect.empty() ? std::string("(none)") : g_effect]++;
@@ -199,4 +335,5 @@ extern "C" void port_native_draw(unsigned r3, unsigned r4, unsigned r5, unsigned
     const auto now = std::chrono::steady_clock::now();
     const double secs = std::chrono::duration<double>(now - g_t0).count();
     if (secs >= g_period) { report(secs); g_t0 = now; }
+    return 0;
 }
