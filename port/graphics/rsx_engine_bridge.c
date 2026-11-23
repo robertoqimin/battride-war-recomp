@@ -3345,12 +3345,90 @@ static const char* const kEngNativeVS =
 "    return Out;\n"
 "}\n";
 
-/* The effects' fragment programs, each the guest's own (the program its
- * state flush binds, RSX_ENGINE_SHADER_DUMP) written out, then the alpha test
- * as the engine's translation does it (discard when the RSX alpha function
- * fails against fp_alpha.x). The %s are, in order: the second target (only
- * SH_PRETRANS_TEX_COL_MUL_P writes one, the texture), the texture sample, the
- * colour, the second target's write, and the comparison, or "true". */
+/* The fragment programs the pass draws with a shader of its own, by the
+ * guest program's structural hash (constants left out, so the same for both
+ * editions): each one the game's own program written out by hand from its
+ * translation (RSX_ENGINE_SHADER_DUMP; docs/RENDERER.md), reading the game's
+ * constants (C[i], what this engine collects from the program) and textures
+ * (S(unit, uv)) the same way. A program not in the table is drawn with this
+ * engine's translation of it, from the same record. */
+typedef struct {
+    u64 fp_hash;
+    const char* name;
+    const char* body;          /* sets o.t0 (and o.t1 when mrt) */
+    int mrt;
+} eng_native_program;
+
+static const eng_native_program kEngNativePrograms[] = {
+    { 0xb232746bc7864749ull, "sprite: texture x colour", "o.t0 = S(0, uv) * col;", 0 },
+    { 0xb9a97ce6812306ebull, "sprite: colour", "o.t0 = col;", 0 },
+    { 0x0a9d5f2af539481full, "sprite: texture-darkened colour",
+      "const float4 tex = S(0, uv);\n"
+      "    o.t0 = float4((tex.a - tex.rgb * tex.a) * (col.rgb * col.a), tex.a * col.a);\n"
+      "    o.t1 = tex;", 1 },
+    { 0x0a5f2826bc7492d5ull, "copy: texture", "o.t0 = S(0, uv);", 0 },
+    { 0x4aee957cd2006214ull, "bloom: bright pass",
+      "const float3 b = saturate(S(0, uv).rgb - C[0].x);\n"
+      "    const float keep = (b.x != C[2].x) * (b.y != C[3].x) * (b.z != C[4].x);\n"
+      "    o.t0 = float4(b * keep, C[1].y);", 0 },
+    { 0xeb9e84f065412dacull, "bloom: 4-tap downsample",
+      "o.t0 = (S(0, uv + C[0].xy) + S(0, uv + C[1].zw) + S(0, uv - C[2].zw) + S(0, uv - C[3].xy)) / 4.0;", 0 },
+    { 0x38d60a2ecfc7e46full, "bloom: combine",
+      "float3 c = S(0, uv).rgb * C[2].x + S(1, uv).rgb * C[0].y;\n"
+      "    c = c * C[4].w + (C[1].x * C[3].w + C[3].xyz);\n"
+      "    o.t0 = float4(c + C[6].x, C[5].x);", 0 },
+    { 0xfc192b89a2eade06ull, "depth of field: blur factor",
+      "const float d = S(1, uv).x;\n"
+      "    const float tn = saturate((d - C[1].x) / (C[0].y - C[0].x));\n"
+      "    const float tf = saturate((d - C[1].z) / (C[0].w - C[0].z));\n"
+      "    const float nearer = tn * tn * (C[2].x - 2.0 * tn), farther = tf * tf * (C[3].x - 2.0 * tf);\n"
+      "    o.t0 = float4(S(0, uv).rgb, farther * C[5].y + C[4].x * (1.0 - nearer));", 0 },
+    { 0x9e5442311c2e6b9full, "depth of field: 4-tap downsample",
+      "o.t0 = (S(0, uv + C[0].xy) + S(0, uv + C[1].zw) + S(0, uv + C[2].xy) + S(0, uv + C[3].zw)) / 4.0;", 0 },
+    { 0x95e5e66b86551caeull, "depth of field: blend",
+      "const float4 sharp = S(0, uv);\n"
+      "    o.t0 = float4(lerp(sharp.rgb, S(1, uv).rgb, sharp.a), C[0].x);", 0 },
+    /* 13 taps: offset C[i].xy, weight C[j].z, as the game pairs them */
+    { 0xe721c77062f5c3b6ull, "gauss 5x5",
+      "static const int2 tap[13] = { int2(0, 6), int2(3, 5), int2(7, 8), int2(1, 9), int2(10, 12), int2(11, 13),\n"
+      "        int2(2, 14), int2(15, 17), int2(16, 18), int2(19, 21), int2(20, 22), int2(4, 23), int2(24, 25) };\n"
+      "    float3 sum = (float3)0;\n"
+      "    [unroll] for (int i = 0; i < 13; i++) sum += S(0, uv + C[tap[i].x].xy).rgb * C[tap[i].y].z;\n"
+      "    o.t0 = float4(sum, S(0, uv + C[2].xy).a);", 0 },
+    /* up to 16 samples towards the centre (C[1].x, C[3].x), C[0].x of them */
+    { 0xa2f8fe6ed13c85adull, "radial blur",
+      "const float2 dir = (float2(C[1].x, C[3].x) - uv) * C[6].x;\n"
+      "    float3 sum = (float3)0;\n"
+      "    [unroll] for (int k = 0; k < 16; k++) sum += S(0, uv + dir * k).rgb * (float)(C[0].x >= k + 1);\n"
+      "    o.t0 = float4(sum / C[32].x * C[33].x + S(0, uv).rgb * (1.0 - C[13].x), C[34].y);", 0 },
+    /* FXAA 3.11, console variant: luma in green, the game's offsets (C[0],
+     * C[2]), direction scales (C[7], C[9], C[12], C[14]), sharpness C[11].z,
+     * threshold C[17].w and level-of-detail constants */
+    { 0xcb6f65c49800f61dull, "fxaa",
+      "const float lumaNw = L(float2(uv.x - C[0].x, uv.y - C[0].y), C[1].x).y;\n"
+      "    const float lumaSe = L(uv + C[2].xy, C[3].x).y;\n"
+      "    const float lumaSw = L(float2(uv.x - C[0].x, uv.y + C[2].y), C[4].x).y;\n"
+      "    const float lumaNe = L(float2(uv.x + C[2].x, uv.y - C[0].y), C[5].x).y + C[6].x;\n"
+      "    const float swMinusNe = lumaSw - lumaNe;\n"
+      "    float2 dir = float2(lumaSe + (swMinusNe - lumaNw), (swMinusNe + lumaNw) - lumaSe);\n"
+      "    dir = abs(dir) > 0.0 ? dir / sqrt(abs(dot(dir, dir))) : (float2)0;\n"
+      "    const float4 rgbyA = (L(uv - dir * C[7].xy, C[8].x) + L(uv + dir * C[9].xy, C[10].x)) / 2.0;\n"
+      "    const float2 dir2 = dir / (min(abs(dir.x), abs(dir.y)) * C[11].z);\n"
+      "    const float4 rgbyB = (rgbyA + (L(uv - dir2 * C[12].zw, C[13].x) + L(uv + dir2 * C[14].zw, C[15].x)) / 2.0) / 2.0;\n"
+      "    const float lumaMin = min(min(lumaSw, lumaNw), min(lumaNe, lumaSe));\n"
+      "    const float lumaMax = max(max(lumaSw, lumaNw), max(lumaNe, lumaSe));\n"
+      "    const float4 rgbyM = L(uv, C[16].x);\n"
+      "    const float rangeM = max(lumaMax, rgbyM.y) - min(lumaMin, rgbyM.y);\n"
+      "    const float twoTap = saturate((float)(rgbyB.y < lumaMin) + (float)(rgbyB.y > lumaMax));\n"
+      "    const float earlyExit = (float)(rangeM / C[17].w < lumaMax);\n"
+      "    const float4 chosen = rgbyA * twoTap + rgbyB * (float)(twoTap == C[18].x);\n"
+      "    o.t0 = chosen * (float)(earlyExit == C[19].x) + rgbyM * earlyExit;", 0 },
+};
+#define ENG_NATIVE_PROGRAMS (sizeof kEngNativePrograms / sizeof kEngNativePrograms[0])
+
+/* %u the program's constant count (at least 1), %s the second target, the
+ * body, the second target's NaN guard and the alpha test ("true" when off),
+ * as the engine's translation applies them. */
 static const char* const kEngNativePSFormat =
 "struct PSInput {\n"
 "    float4 position : SV_POSITION; float4 col0 : COLOR0; float4 col1 : COLOR1;\n"
@@ -3360,25 +3438,21 @@ static const char* const kEngNativePSFormat =
 "};\n"
 "Texture2D    rsx_tex[16] : register(t0);\n"
 "SamplerState rsx_samp[16] : register(s0);\n"
-"cbuffer PSConstants : register(b1) { float4 fp_constants[1]; float4 fp_alpha; };\n"
+"cbuffer PSConstants : register(b1) { float4 C[%u]; float4 fp_alpha; };\n"
 "struct PSOutput { float4 t0 : SV_TARGET0;%s };\n"
+"#define S(u, p) rsx_tex[u].Sample(rsx_samp[u], (p))\n"
+"#define L(p, lod) rsx_tex[0].SampleLevel(rsx_samp[0], (p), (lod))\n"
 "PSOutput main(PSInput input) {\n"
 "    const float4 col = saturate(input.col0);\n"
-"    const float4 tex = %s;\n"
+"    const float2 uv = input.tc0.xy;\n"
 "    PSOutput o;\n"
-"    o.t0 = %s;\n"
+"    %s\n"
+"    o.t0 = (o.t0 == o.t0) ? o.t0 : (float4)0;\n"
 "%s"
 "    const float a = o.t0.a, ref = fp_alpha.x;\n"
 "    if (!(%s)) discard;\n"
 "    return o;\n"
 "}\n";
-
-static const char* const kEngNativeColour[PORT_NATIVE_KINDS] = {
-    "tex * col",                                                          /* TEX_COL */
-    "col",                                                                /* COL */
-    "float4((tex.a - tex.rgb * tex.a) * (col.rgb * col.a), tex.a * col.a)", /* TEX_COL_MUL */
-    "tex",                                                                /* TEX */
-};
 
 static const char* eng_native_alpha_test(const rsx_be_render_state* rs)
 {
@@ -3408,46 +3482,23 @@ static const char* const kEngNativeDebugPS =
 "struct PSInput { float4 position : SV_POSITION; float4 col0 : COLOR0; };\n"
 "float4 main(PSInput input) : SV_TARGET { return float4(1.0, 0.0, 1.0, 1.0); }\n";
 
-static const char* const kEngNativeTexPS =
-"struct PSInput { float4 position : SV_POSITION; float4 col0 : COLOR0; float4 col1 : COLOR1; float4 fog : FOG; float4 tc0:TEXCOORD0; };\n"
-"Texture2D rsx_tex[16] : register(t0);\nSamplerState rsx_samp[16] : register(s0);\n"
-"float4 main(PSInput input) : SV_TARGET { return float4(rsx_tex[0].Sample(rsx_samp[0], input.tc0.xy).rgb, 1.0); }\n";
-static const char* const kEngNativeColPS =
-"struct PSInput { float4 position : SV_POSITION; float4 col0 : COLOR0; };\n"
-"float4 main(PSInput input) : SV_TARGET { return float4(input.col0.rgb, 1.0); }\n";
-
 typedef struct { u64 key; u32 pipeline; } eng_native_pipe;
-static eng_native_pipe s_native_pipes[64];
+static eng_native_pipe s_native_pipes[128];
 static u32 s_native_npipes;
+static u32 s_native_by_program[ENG_NATIVE_PROGRAMS + 1];   /* the last: by translation */
 
 static void eng_native_draw(u32 id)
 {
     const port_native_record* rec = port_native_take(id);
-    static u32 logged;
-    static int trace = -1;
-    if (trace < 0) { const char* e = getenv("PORT_NATIVE_DEBUG"); trace = e && *e; }
-#define NATIVE_TRACE(...) do { if (trace && logged < 12) { fprintf(stderr, "[native-draw] " __VA_ARGS__); } } while (0)
-    NATIVE_TRACE("id %u: record %p, %u vertices, ready %d\n", id, (const void*)rec, rec ? rec->vertex_count : 0, g.ready);
-    if (trace && rec) {   /* each effect once: the guest fragment program its state flush bound */
-        static char seen[16][32];
-        static u32 nseen;
-        u32 i = 0;
-        while (i < nseen && strcmp(seen[i], rec->effect)) i++;
-        if (i == nseen && nseen < 16) {
-            u32 loc = 0;
-            const u32 off = rsx_dsp_fragment_program(&g.rsx, &loc);
-            snprintf(seen[nseen++], 32, "%s", rec->effect);
-            fprintf(stderr, "[native-draw] effect %s: fragment program location %u offset 0x%08X\n", rec->effect, loc, off);
-        }
-    }
-    if (!g.ready || !rec || !rec->vertex_count) { logged++; return; }
+    static int dbg = -1;
+    if (dbg < 0) { const char* e = getenv("PORT_NATIVE_DEBUG"); dbg = e ? atoi(e) : 0; }
+    if (!g.ready || !rec || !rec->vertex_count) return;
 
     rsx_be_render_state rs;
     rsx_draw_engine_decode_render_state(&g.rsx, &rs);
     u32 targets[RSX_BE_MAX_COLOR_TARGETS];
     const u32 n_targets = eng_current_target_set(targets);
-    NATIVE_TRACE("  targets %u\n", n_targets);
-    if (!n_targets) { logged++; return; }
+    if (!n_targets) return;
     const u32 target = targets[0];
     rsx_dsp_surface sf;
     rsx_dsp_viewport vp;
@@ -3458,56 +3509,87 @@ static void eng_native_draw(u32 id)
     rsx_vertex_layout_plan layout;
     rsx_vertex_layout_plan_init(&layout, (1u << 0) | (1u << 3) | (1u << 8));
     const rsx_be_format rt_fmt = eng_surface_format(sf.color_format);
-    const u32 kind = rec->kind < PORT_NATIVE_KINDS ? rec->kind : 0;
-    u64 key = rsx_draw_engine_hash_render_state(&rs, 0x4E41544956453244ull);   /* "NATIVE2D" */
-    key = eng_fnv1a(&kind, sizeof kind, key);
-    key = eng_fnv1a(&rt_fmt, sizeof rt_fmt, key);
-    key = eng_fnv1a(&n_targets, sizeof n_targets, key);
-    u32 pipeline = 0;
-    for (u32 i = 0; i < s_native_npipes; i++) if (s_native_pipes[i].key == key) pipeline = s_native_pipes[i].pipeline;
-    if (!pipeline) {
-        static int dbg = -1;
-        if (dbg < 0) { const char* e = getenv("PORT_NATIVE_DEBUG"); dbg = e ? atoi(e) : 0; }
-        static char native_ps[2048];
-        const int mrt = kind == PORT_NATIVE_TEX_COL_MUL;
-        snprintf(native_ps, sizeof native_ps, kEngNativePSFormat,
-                 mrt ? " float4 t1 : SV_TARGET1;" : "",
-                 rec->textured ? "rsx_tex[0].Sample(rsx_samp[0], input.tc0.xy)" : "(float4)0",
-                 kEngNativeColour[kind], mrt ? "    o.t1 = tex;\n" : "", eng_native_alpha_test(&rs));
-        const char* ps = dbg == 1 ? kEngNativeDebugPS : dbg == 2 ? kEngNativeTexPS : dbg == 3 ? kEngNativeColPS : native_ps;
-        pipeline = g.be->pipeline_create(g.be->user, kEngNativeVS, ps, &rs, &layout,
-                                         layout.stride, rt_fmt, n_targets);
-        NATIVE_TRACE("  pipeline %u (stride %u)\n", pipeline, layout.stride);
-        if (!pipeline) { logged++; return; }
-        if (s_native_npipes < 64) s_native_pipes[s_native_npipes++] = (eng_native_pipe){ key, pipeline };
+
+    /* The program pair the game's flush bound: this engine's pipeline for it
+     * (translated once, then cached), its structural hash, the texture units
+     * it samples, and its constants collected into g.fp_constants. */
+    int fixed = 1;
+    u32 tex_used = 0;
+    u64 fp_hash = 0;
+    /* The translation's vertex inputs are the ones its vertex program reads,
+     * compacted in order (eng_vertex_layout), not the record's three. */
+    rsx_vertex_layout_plan glayout;
+    eng_vertex_layout(&glayout);
+    const u32 translated = eng_pipeline_get(&glayout, &rs, rt_fmt, n_targets, &fixed, &tex_used, &fp_hash);
+    if (!translated) return;
+    u32 prog = 0;
+    while (prog < ENG_NATIVE_PROGRAMS && (fixed || kEngNativePrograms[prog].fp_hash != fp_hash)) prog++;
+    static const char* only;
+    static int only_read;
+    if (!only_read) { only = getenv("PORT_NATIVE_PROGRAMS"); only_read = 1; }   /* diagnostic: "none" = all by translation */
+    if (only && prog < ENG_NATIVE_PROGRAMS && !strstr(only, kEngNativePrograms[prog].name)) prog = ENG_NATIVE_PROGRAMS;
+    if (dbg && prog == ENG_NATIVE_PROGRAMS) {
+        static u64 seen[32];
+        static u32 nseen;
+        u32 i = 0;
+        while (i < nseen && seen[i] != fp_hash) i++;
+        if (i == nseen && nseen < 32) {
+            u32 loc = 0;
+            seen[nseen++] = fp_hash;
+            fprintf(stderr, "[native-draw] by translation: fp %016llx at %08X (effect %s), %u constants, units %X\n",
+                    (unsigned long long)fp_hash, rsx_dsp_fragment_program(&g.rsx, &loc), rec->effect,
+                    g.fp_constants.count, tex_used);
+        }
+    }
+    s_native_by_program[prog]++;
+
+    u32 pipeline = translated;
+    const u32 nslots = g.fp_constants.count ? g.fp_constants.count : 1u;
+    if (prog < ENG_NATIVE_PROGRAMS || dbg == 1) {
+        u64 key = rsx_draw_engine_hash_render_state(&rs, 0x4E41544956453244ull);   /* "NATIVE2D" */
+        key = eng_fnv1a(&prog, sizeof prog, key);
+        key = eng_fnv1a(&nslots, sizeof nslots, key);
+        key = eng_fnv1a(&rt_fmt, sizeof rt_fmt, key);
+        key = eng_fnv1a(&n_targets, sizeof n_targets, key);
+        pipeline = 0;
+        for (u32 i = 0; i < s_native_npipes; i++) if (s_native_pipes[i].key == key) pipeline = s_native_pipes[i].pipeline;
+        if (!pipeline) {
+            static char native_ps[4096];
+            const eng_native_program* p = &kEngNativePrograms[prog < ENG_NATIVE_PROGRAMS ? prog : 0];
+            snprintf(native_ps, sizeof native_ps, kEngNativePSFormat, nslots,
+                     p->mrt ? " float4 t1 : SV_TARGET1;" : "", p->body,
+                     p->mrt ? "    o.t1 = (o.t1 == o.t1) ? o.t1 : (float4)0;\n" : "", eng_native_alpha_test(&rs));
+            pipeline = g.be->pipeline_create(g.be->user, kEngNativeVS, dbg == 1 ? kEngNativeDebugPS : native_ps, &rs,
+                                             &layout, layout.stride, rt_fmt, n_targets);
+            if (!pipeline) {
+                fprintf(stderr, "[native-draw] the shader for '%s' did not build:\n%s\n", p->name, native_ps);
+                return;
+            }
+            if (s_native_npipes < 128) s_native_pipes[s_native_npipes++] = (eng_native_pipe){ key, pipeline };
+        }
     }
 
+    /* Textures: the units the program samples, as the game's flush bound
+     * them, through this engine's own binding (its cache, render-target
+     * surfaces, depth, feedback copies) with their samplers. */
     u32 textures[RSX_BE_MAX_TEXTURES];
     rsx_be_sampler_desc samplers[RSX_BE_MAX_TEXTURES];
     memset(textures, 0, sizeof textures);
     memset(samplers, 0, sizeof samplers);
-    /* The texture: what the game's state flush bound to unit 0, through
-     * this engine's own binding (its cache, render-target surfaces, depth,
-     * feedback copies), with the sampler state that came with it. */
-    if (rec->textured) {
-        const u32 bound = sink_bind_textures(targets, n_targets, zslot, 1u, textures, samplers);
-        if (bound == ENG_INVALID || !textures[0]) {
-            static u32 failed;
-            if (trace && failed++ < 10) {
-                rsx_dsp_texture t0;
-                rsx_dsp_get_texture(&g.rsx, 0, &t0);
-                fprintf(stderr, "[native-draw] %s: no texture (bound %X): unit 0 %s fmt %02X %ux%u loc %u off %08X pitch %u\n",
-                        rec->effect, bound, t0.enabled ? "on" : "off", t0.format, t0.width, t0.height, t0.location, t0.offset, t0.pitch);
-            }
-            logged++;
-            return;
-        }
+    const u32 tex_mask = sink_bind_textures(targets, n_targets, zslot, tex_used, textures, samplers);
+    if (tex_mask == ENG_INVALID) return;
+    if (dbg >= 5) {
+        static u32 shown;
+        if (shown++ < 40)
+            fprintf(stderr, "[native-draw] %s fp %016llx prog %u pipeline %u (translated %u), units %X mask %X tex0 %u, %u targets, %u consts, %u vertices, first (%.2f %.2f %.2f) col (%.2f %.2f %.2f %.2f) uv (%.2f %.2f)\n",
+                    rec->effect, (unsigned long long)fp_hash, prog, pipeline, translated, tex_used, tex_mask, textures[0],
+                    n_targets, g.fp_constants.count, rec->vertex_count, rec->vertices[0], rec->vertices[1], rec->vertices[2],
+                    rec->vertices[4], rec->vertices[5], rec->vertices[6], rec->vertices[7], rec->vertices[8], rec->vertices[9]);
     }
-    NATIVE_TRACE("  texture %u\n", textures[0]);
-    logged++;
 
-    /* VPConst: no transform (rows 0..3 zero: the built-in program passes the
-     * position through), then the viewport epilogue, as sink_end. */
+    /* VPConst: the guest constants (a translated vertex program reads them;
+     * the pass's own passes the position through), then the viewport
+     * epilogue, as sink_end. */
     const float W = sf.clip_w ? (float)sf.clip_w : (float)g.width;
     const float H = sf.clip_h ? (float)sf.clip_h : (float)g.height;
     const float Wv = W / (float)sf.aa_sx, Hv = H / (float)sf.aa_sy;
@@ -3520,25 +3602,32 @@ static void eng_native_draw(u32 id)
         xf[5] = -((vp.translate[1] - Hv * 0.5f) / (Hv * 0.5f));
         xf[6] = vp.translate[2];
     }
-    memset(g.vp_cb, 0, RSX_DSP_NUM_CONSTANTS * 16u);
+    memcpy(g.vp_cb, g.rsx.constants, RSX_DSP_NUM_CONSTANTS * 16u);
     memcpy(g.vp_cb + RSX_DSP_NUM_CONSTANTS * 16u, xf, sizeof xf);
-    if (g.fp_cb_cap < 32u) {
-        u8* n = (u8*)realloc(g.fp_cb, 32u);
+    const u32 fp_bytes = (nslots + 1u) * 16u;
+    if (g.fp_cb_cap < fp_bytes) {
+        u8* n = (u8*)realloc(g.fp_cb, fp_bytes);
         if (!n) return;
-        g.fp_cb = n; g.fp_cb_cap = 32u;
+        g.fp_cb = n; g.fp_cb_cap = fp_bytes;
     }
-    memset(g.fp_cb, 0, 32u);
-    { float* alpha = (float*)(g.fp_cb + 16u);
+    memset(g.fp_cb, 0, fp_bytes);
+    if (g.fp_constants.count) memcpy(g.fp_cb, g.fp_constants.values, g.fp_constants.count * 16u);
+    { float* alpha = (float*)(g.fp_cb + nslots * 16u);
       alpha[0] = rsx_fp_alpha_ref(rs.alpha_ref_raw, rs.alpha_ref_format); }
 
     const u32 depth_handle = (zslot != ENG_INVALID) ? g.zdepths[zslot].handle : 0;
+    if (zslot != ENG_INVALID && !g.zdepths[zslot].cleared) {
+        g.be->clear_depth_stencil(g.be->user, depth_handle, RSX_BE_CLEAR_DEPTH | RSX_BE_CLEAR_STENCIL, 1.0f, 0);
+        g.zdepths[zslot].cleared = 1;
+        g.zdepths[zslot].had_write = 0;
+    }
     u32 handles[RSX_BE_MAX_COLOR_TARGETS];
     for (u32 i = 0; i < n_targets; i++) handles[i] = g.surfaces[targets[i]].handle;
     g.be->bind_targets(g.be->user, handles, n_targets, depth_handle);
     g.be->bind_pipeline(g.be->user, pipeline);
     g.be->bind_vs_constants(g.be->user, g.vp_cb, ENG_VP_CB_BYTES);
-    g.be->bind_ps_constants(g.be->user, g.fp_cb, 32u);
-    g.be->bind_textures(g.be->user, textures, samplers, rec->textured ? 1u : 0u);
+    g.be->bind_ps_constants(g.be->user, g.fp_cb, fp_bytes);
+    g.be->bind_textures(g.be->user, textures, samplers, tex_mask);
     g.be->bind_vertex_textures(g.be->user, NULL, NULL, 0u);
     g.be->set_viewport(g.be->user, 0.0f, 0.0f, W, H);
     {
@@ -3560,9 +3649,9 @@ static void eng_native_draw(u32 id)
     g.be->set_stencil_ref(g.be->user, rsx_dsp_reg(&g.rsx, M_STENCIL_FUNC_REF) & 0xFFu);
     const float* vertices = rec->vertices;
     if (!rec->vertex_colour) {
-        /* No colour attribute in the draw: the vertex program reads the RSX's
-         * current value of attribute 3, with the array path's rule
-         * (rsx_vertex_fetch_plan_init): never written is white. */
+        /* No colour attribute in the draw: the RSX's current value of
+         * attribute 3, with the array path's rule (rsx_vertex_fetch_plan_init):
+         * never written is white. */
         static float with_colour[PORT_NATIVE_MAX_VERTS * 12];
         float colour[4];
         rsx_dsp_vertex_default(&g.rsx, 3u, colour);
@@ -3571,31 +3660,90 @@ static void eng_native_draw(u32 id)
         memcpy(with_colour, rec->vertices, (size_t)rec->vertex_count * 48u);
         for (u32 v = 0; v < rec->vertex_count; v++) memcpy(&with_colour[v * 12 + 4], colour, 16u);
         vertices = with_colour;
-        static u32 shown;
-        if (trace && shown < 8) {
-            for (u32 a = 0; a < 16; a++) {
-                rsx_dsp_vertex_attr va;
-                rsx_dsp_get_vertex_attr(&g.rsx, a, &va);
-                if (va.type) fprintf(stderr, "[native-draw]   attr %u: type %u size %u stride %u offset %08X loc %u\n",
-                                     a, va.type, va.size, va.stride, va.offset, va.location);
-            }
-            float c[4];
-            rsx_dsp_vertex_default(&g.rsx, 3u, c);
-            fprintf(stderr, "[native-draw]   attr 3 current (%.3f %.3f %.3f %.3f), blend %u src %X dst %X, colour mask %X,"
-                    " depth test %u write %u func %X, stencil %u func %X ref %X, alpha test %u func %X ref %X, cull %u,"
-                    " zeta loc %u off %08X slot %u, viewport z %.3f+%.3f\n", c[0], c[1], c[2], c[3],
-                    rs.blend_enable, rs.sf_rgb, rs.df_rgb, rs.color_mask, rs.depth_test, rs.depth_write, rs.depth_func,
-                    rs.stencil_enable, rs.s_func, rsx_dsp_reg(&g.rsx, M_STENCIL_FUNC_REF), rs.alpha_test_enable, rs.alpha_func,
-                    rs.alpha_ref_raw, rs.cull_enable, sf.zeta_location, sf.zeta_offset, zslot, vp.scale[2], vp.translate[2]);
-        }
-        if (trace && shown++ < 8)
-            fprintf(stderr, "[native-draw] %s full-screen: colour (%.2f %.2f %.2f %.2f), %u vertices, first (%.3f %.3f %.3f) uv (%.3f %.3f),"
-                    " targets %u (%ux%u fmt %u), texture %u\n", rec->effect, colour[0], colour[1], colour[2], colour[3],
-                    rec->vertex_count, vertices[0], vertices[1], vertices[2], vertices[8], vertices[9], n_targets,
-                    g.surfaces[target].w, g.surfaces[target].h, sf.color_format, textures[0]);
     }
-    g.be->draw(g.be->user, RSX_TOPOLOGY_TRIANGLES, vertices, rec->vertex_count, layout.stride, NULL, 0);
+    u32 stride = layout.stride;
+    if (pipeline == translated) {
+        /* By translation: the record's attributes into the program's own
+         * layout, anything else it reads at the RSX's current value. */
+        static float repacked[PORT_NATIVE_MAX_VERTS * 16 * 4];
+        stride = glayout.stride;
+        float defaults[RSX_DSP_NUM_VERTEX_ATTR][4];
+        for (u32 k = 0; k < glayout.count; k++) rsx_dsp_vertex_default(&g.rsx, glayout.attrs[k], defaults[k]);
+        for (u32 v = 0; v < rec->vertex_count; v++) {
+            float* out = repacked + (size_t)v * (stride / 4u);
+            for (u32 k = 0; k < glayout.count; k++) {
+                const u32 a = glayout.attrs[k];
+                const float* src = a == 0 ? &vertices[v * 12] : a == 3 ? &vertices[v * 12 + 4] : a == 8 ? &vertices[v * 12 + 8] : defaults[k];
+                memcpy(out + k * 4u, src, 16u);
+            }
+        }
+        vertices = repacked;
+    }
+    g.be->draw(g.be->user, RSX_TOPOLOGY_TRIANGLES, vertices, rec->vertex_count, stride, NULL, 0);
     if (rs.color_mask) eng_surfaces_wrote(targets, n_targets);
+    if (rs.depth_write && zslot != ENG_INVALID) g.zdepths[zslot].had_write = 1;
+
+    if (dbg) {
+        static u32 frames;
+        if (++frames % 20000u == 0) {
+            fprintf(stderr, "[native-draw] programs:");
+            for (u32 i = 0; i <= ENG_NATIVE_PROGRAMS; i++)
+                fprintf(stderr, " %s %u;", i < ENG_NATIVE_PROGRAMS ? kEngNativePrograms[i].name : "by translation",
+                        s_native_by_program[i]);
+            fprintf(stderr, "\n");
+            memset(s_native_by_program, 0, sizeof s_native_by_program);
+        }
+    }
+}
+
+__attribute__((weak)) const char* port_native_probe_name(uint32_t index)
+{
+    (void)index;
+    return NULL;
+}
+
+/* PORT_NATIVE_PROBE: right after a draw the game made itself, what it used:
+ * the fragment program and its constants (as this engine collected them for
+ * that draw), the enabled texture units, the targets and the render state. */
+static void eng_native_probe(u32 index)
+{
+    const char* name = port_native_probe_name(index);
+    u32 loc = 0;
+    const u32 fp = rsx_dsp_fragment_program(&g.rsx, &loc);
+    rsx_dsp_surface sf;
+    rsx_dsp_get_surface(&g.rsx, &sf);
+    rsx_be_render_state rs;
+    rsx_draw_engine_decode_render_state(&g.rsx, &rs);
+    u32 targets[RSX_BE_MAX_COLOR_TARGETS];
+    const u32 n_targets = eng_current_target_set(targets);
+    fprintf(stderr, "[native-probe] %s: fp loc %u off %08X; %u targets (colour fmt %u, %ux%u, offsets %08X %08X); blend %u %X/%X,"
+            " depth %u, alpha test %u, mask %X\n", name ? name : "?", loc, fp, n_targets, sf.color_format,
+            sf.clip_w, sf.clip_h, sf.color_offset[0], sf.color_offset[1], rs.blend_enable, rs.sf_rgb, rs.df_rgb,
+            rs.depth_test, rs.alpha_test_enable, rs.color_mask);
+    for (u32 u = 0; u < RSX_BE_MAX_TEXTURES; u++) {
+        rsx_dsp_texture t;
+        rsx_dsp_get_texture(&g.rsx, u, &t);
+        if (!t.enabled) continue;
+        const u32 surf = eng_surface_newest(t.location, t.offset);
+        fprintf(stderr, "[native-probe]   unit %u: fmt %02X %ux%u loc %u off %08X pitch %u%s, filter %08X wrap %08X\n", u,
+                t.format, t.width, t.height, t.location, t.offset, t.pitch, surf != ENG_INVALID ? " (a render target)" : "",
+                t.filter, t.wrap);
+    }
+    for (u32 i = 0; i < g.fp_constants.count; i++) {
+        float c[4];
+        memcpy(c, g.fp_constants.values[i], 16u);
+        fprintf(stderr, "[native-probe]   c%u = (%g, %g, %g, %g)\n", i, c[0], c[1], c[2], c[3]);
+    }
+    for (u32 a = 0; a < 16; a++) {
+        rsx_dsp_vertex_attr va;
+        rsx_dsp_get_vertex_attr(&g.rsx, a, &va);
+        if (va.type && va.size) fprintf(stderr, "[native-probe]   attr %u: type %u size %u stride %u offset %08X loc %u\n",
+                                        a, va.type, va.size, va.stride, va.offset, va.location);
+    }
+    { const u8* vp_uc = NULL; const u8* fp_uc = NULL; u32 vp_n = 0, fp_size = 0; const eng_fp_memo* memo = NULL;
+      if (eng_guest_programs_ex(&vp_uc, &vp_n, &fp_uc, &fp_size, &memo))
+          fprintf(stderr, "[native-probe]   fp hash %016llx, vp %u instructions\n",
+                  (unsigned long long)(memo ? memo->hash : eng_fp_debug_hash(fp_uc, fp_size)), vp_n); }
 }
 
 void rsx_draw_engine_method(u32 method, u32 arg)
@@ -3610,6 +3758,7 @@ void rsx_draw_engine_method(u32 method, u32 arg)
     u32 m = (method >= 0xE000u) ? (method & 0xFFFCu) : (method & 0x1FFCu);
 #ifdef ENG_NATIVE_PASS
     if (m == 0x0100u && (arg & 0xFFFF0000u) == PORT_NATIVE_MARK) { eng_native_draw(arg & 0xFFFFu); return; }
+    if (m == 0x0100u && (arg & 0xFFFF0000u) == PORT_NATIVE_PROBE_MARK) { eng_native_probe(arg & 0xFFFFu); return; }
 #endif
     rsx_dispatch_method(&g.rsx, m, arg);
 }

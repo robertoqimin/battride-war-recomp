@@ -660,7 +660,11 @@ if((PORT_DRAW_PROBE OR PORT_NATIVE_PASS) AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CX
             "${PORT_CHUNK_DRAW_FLUSH_FUNCS}(ctx); DRAIN_TRAMPOLINE(ctx); "
             "if (port_native_commit((unsigned)r3)) return; "
             "ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->gpr[5] = r5; ctx->gpr[6] = r6; } ")
-        string(APPEND probe_cpp "void ${PORT_CHUNK_DRAW_FLUSH_FUNCS}(ppu_context* ctx);\n")
+        string(APPEND probe_cpp "void ${PORT_CHUNK_DRAW_FLUSH_FUNCS}(ppu_context* ctx);\n"
+                                "extern \"C\" void port_native_after(unsigned r3);\n")
+        # after the game's own draw: PORT_NATIVE_PROBE marks it for the RSX engine to describe
+        set(native_after0 "port_native_after((unsigned)r3_in); ")
+        set(native_before0 "const uint64_t r3_in = ctx->gpr[3]; ")
         set(native_cmd_call "port_native_engine_command(vm_read32(ctx->gpr[4]), (unsigned)ctx->gpr[4], (unsigned)ctx->gpr[2]); ")
     endif()
     set(probe_index 0)
@@ -674,9 +678,15 @@ if((PORT_DRAW_PROBE OR PORT_NATIVE_PASS) AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CX
             "void ${fn}(ppu_context* ctx) __attribute__((weak));\n"
             "void port_lifted_draw${probe_index}(ppu_context* ctx) __attribute__((alias(\"_Z13${fn}P11ppu_context\")));\n")
         list(APPEND probe_chunks "${chunk}")
+        set(this_before "")
+        set(this_after "")
+        if(probe_index EQUAL 0)
+            set(this_before "${native_before0}")
+            set(this_after "${native_after0}")
+        endif()
         string(APPEND probe_cpp
             "void port_lifted_draw${probe_index}(ppu_context* ctx);\n"
-            "void ${fn}(ppu_context* ctx) { ${this_call}port_lifted_draw${probe_index}(ctx); }\n")
+            "void ${fn}(ppu_context* ctx) { ${this_before}${this_call}port_lifted_draw${probe_index}(ctx); ${this_after}}\n")
         math(EXPR probe_index "${probe_index} + 1")
     endforeach()
     # The engine's own render-command interpreter (docs/RENDERER.md): counted by
