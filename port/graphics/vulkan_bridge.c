@@ -1629,23 +1629,14 @@ static u64 vk_sc_hash(const void* d, size_t n, u64 h)
     return h;
 }
 
-/* The translator's identity; without one from CMake, the running executable's
- * size and modification time. */
+/* The translator's identity, from CMake; 0 (no cache) without one. */
 static u64 vk_sc_exe_id(void)
 {
 #ifdef PORT_SPIRV_ID
     return PORT_SPIRV_ID | 1u;
-#endif
-    char exe[1024] = { 0 };
-#ifdef _WIN32
-    if (!GetModuleFileNameA(NULL, exe, sizeof exe - 1)) return 0;
 #else
-    if (readlink("/proc/self/exe", exe, sizeof exe - 1) <= 0) return 0;
+    return 0;
 #endif
-    struct stat st;
-    if (stat(exe, &st)) return 0;
-    long long v[2] = { (long long)st.st_size, (long long)st.st_mtime };
-    return vk_sc_hash(v, sizeof v, 1469598103934665603ull) | 1u;
 }
 
 static void vk_sc_add_locked(u64 key, const u32* spv, u32 words)
@@ -1681,6 +1672,7 @@ static void vk_sc_open(const char* pipeline_path)
         return;
     }
     s_sc.id = vk_sc_exe_id();
+    if (!s_sc.id) { VK_LOG("SPIR-V cache: off (no translator identity in this build)\n"); return; }
     s_sc.on = 1;
     FILE* f = fopen(s_sc.path, "rb");
     if (!f) { VK_LOG("SPIR-V cache: none yet, will be saved to %s\n", s_sc.path); return; }
