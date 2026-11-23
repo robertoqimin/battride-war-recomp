@@ -290,4 +290,89 @@ class ImporterTests(unittest.TestCase):
     def test_build_jobs_positive(self):
         self.assertGreaterEqual(m.build_jobs(),1)
 
+
+class EditionTests(unittest.TestCase):
+    BASE={'PS3_GAME/PARAM.SFO':{'size':1,'sha256':'a'},'PS3_GAME/USRDIR/EBOOT.BIN':{'size':10,'sha256':'b'},
+          'PS3_GAME/USRDIR/x.dat':{'size':5,'sha256':'c'}}
+    PREMIUM={'PS3_GAME/PARAM.SFO':{'size':1,'sha256':'p'},'PS3_GAME/USRDIR/EBOOT.BIN':{'size':11,'sha256':'q'},
+             'PS3_GAME/USRDIR/x.dat':{'size':5,'sha256':'c'},'PS3_GAME/USRDIR/song.msf':{'size':7,'sha256':'s'}}
+
+    def package(self,root,legacy=False):
+        (root/'app/discs').mkdir(parents=True)
+        (root/'app/disc-manifest.json').write_text(json.dumps(self.BASE))
+        delta=m.manifest_delta(self.BASE,self.PREMIUM,'BLJS10219','BLJS10220')
+        (root/'app/discs/BLJS10219.json').write_text(json.dumps(delta))
+        meta={'elf_sha256':'e0','sdk_commit':'s','codecs':{}}
+        if not legacy:
+            meta['editions']=[{'title_id':'BLJS10220','name':'Kamen Rider Battride War','elf_sha256':'e0'},
+                              {'title_id':'BLJS10219','name':'Kamen Rider Battride War Premium TV Sound Edition',
+                               'elf_sha256':'e1','delta':'discs/BLJS10219.json'}]
+        (root/'app/package.json').write_text(json.dumps(meta))
+        return m.Package(root)
+
+    def test_delta_rebuilds_the_other_disc(self):
+        delta=m.manifest_delta(self.BASE,self.PREMIUM,'BLJS10219','BLJS10220')
+        self.assertEqual(sorted(delta['changed']),['PS3_GAME/PARAM.SFO','PS3_GAME/USRDIR/EBOOT.BIN'])
+        self.assertEqual(list(delta['added']),['PS3_GAME/USRDIR/song.msf'])
+        self.assertEqual(m.apply_delta(self.BASE,delta),self.PREMIUM)
+        with self.assertRaisesRegex(m.ImportError,'does not match'):
+            m.apply_delta(dict(self.BASE,extra={'size':1,'sha256':'z'}),delta)
+
+    def test_disc_manifest_skips_the_decrypted_eboot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            game=Path(tmp);(game/'PS3_GAME/USRDIR').mkdir(parents=True)
+            (game/'PS3_GAME/USRDIR/EBOOT.BIN').write_bytes(b'bin');(game/'PS3_GAME/USRDIR/EBOOT.elf').write_bytes(b'elf')
+            (game/'PS3_DISC.SFB').write_bytes(b'sfb')
+            self.assertEqual(sorted(m.disc_manifest(game)),['PS3_DISC.SFB','PS3_GAME/USRDIR/EBOOT.BIN'])
+
+    def test_listing_picks_the_edition(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=self.package(Path(tmp))
+            listing=lambda man:{n:{'Size':str(i['size'])} for n,i in man.items()}
+            self.assertEqual(p.disc_edition(listing(self.BASE))['title_id'],'BLJS10220')
+            self.assertEqual(p.disc_edition(listing(self.PREMIUM))['title_id'],'BLJS10219')
+            # A Premium disc with a song missing is reported against the Premium list.
+            broken=listing(self.PREMIUM);del broken['PS3_GAME/USRDIR/song.msf']
+            broken['PS3_GAME/USRDIR/EBOOT.BIN']={'Size':'11'}
+            with self.assertRaisesRegex(m.ImportError,'song.msf'):p.disc_edition(broken)
+            other=listing(self.BASE);other['PS3_GAME/USRDIR/x.dat']={'Size':'6'}
+            with self.assertRaisesRegex(m.ImportError,'BLJS10220.*x.dat'):p.disc_edition(other)
+
+    def test_old_package_has_the_base_edition(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=self.package(Path(tmp),legacy=True)
+            self.assertEqual([e['title_id'] for e in p.editions],['BLJS10220'])
+            self.assertEqual(p.editions[0]['elf_sha256'],'e0')
+
+    def test_imported_edition_sets_the_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'pkg';p=self.package(root)
+            pgo=root/'usr/share/battride/pgo';pgo.mkdir(parents=True)
+            (pgo/'profile.json').write_text(json.dumps({'sdk_commit':'s','eboot_sha256':'e0'}));(pgo/'a.gcda').write_bytes(b'1')
+            data=Path(tmp)/'data';data.mkdir()
+            self.assertEqual(p.edition(data)['title_id'],'BLJS10220')
+            normal=p.build_identity(data)
+            self.assertEqual(normal['elf_sha256'],'e0');self.assertIsNotNone(normal['pgo'])
+            (data/'import.json').write_text(json.dumps({'title_id':'BLJS10219','elf_sha256':'e1'}))
+            self.assertEqual(p.edition(data)['title_id'],'BLJS10219')
+            premium=p.build_identity(data)
+            # The base edition's profiles do not fit the Premium EBOOT.
+            self.assertEqual(premium['elf_sha256'],'e1');self.assertIsNone(premium['pgo'])
+            self.assertIsNone(p.profiles('e1'))
+
+    def test_premium_install_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data=Path(tmp);system=data/'game/game/BLJS10219DATA/USRDIR/nativePS/system'
+            system.mkdir(parents=True);(system/'BLJS10219DATA.start').write_text('OK')
+            self.assertFalse(m.clear_interrupted_install(data))
+            self.assertTrue(m.clear_interrupted_install(data,'BLJS10219'))
+
+    def test_shipped_delta_is_the_premium_disc(self):
+        delta=json.loads((Path(__file__).resolve().parents[1]/'packaging/discs/BLJS10219.json').read_text())
+        self.assertEqual((delta['title_id'],delta['base']),('BLJS10219','BLJS10220'))
+        self.assertEqual(sorted(delta['changed']),['PS3_DISC.SFB','PS3_GAME/LICDIR/LIC.DAT','PS3_GAME/PARAM.SFO',
+                                                   'PS3_GAME/USRDIR/EBOOT.BIN'])
+        self.assertEqual(len(delta['added']),98);self.assertEqual(delta['removed'],[])
+        self.assertEqual(sum(n.startswith('PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/') and n.endswith('.msf') for n in delta['added']),58)
+
 if __name__=='__main__':unittest.main()

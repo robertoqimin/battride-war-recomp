@@ -61,7 +61,8 @@ for exe in ('gcc.exe', 'clang.exe', 'g++.exe', 'cmake.exe', 'ninja.exe', 'objdum
     if not (tools / exe).is_file():
         raise SystemExit('MSYS2 UCRT64 tool missing: ' + str(tools / exe))
 spec = json.loads((P / 'recompile.json').read_text())
-# The package is built for the normal edition for now (docs/PLANO0.6.1.md, E3/E4).
+# The base edition (BLJS10220): its disc list ships whole, the others as deltas;
+# the shipped profiles are trained on it (docs/PLANO0.6.1.md, E4).
 edition = spec['editions'][0]
 
 
@@ -219,11 +220,23 @@ p = P / 'game/PS3_DISC.SFB'
 if p.exists():
     manifest['PS3_DISC.SFB'] = {'size': p.stat().st_size, 'sha256': sha(p)}
 (S / 'app/disc-manifest.json').write_text(json.dumps(manifest, separators=(',', ':')))
+# The other editions' discs, as deltas against this one (packaging/discs, made by
+# scripts/release/disc_delta.py); the importer rebuilds their full lists (importer.apply_delta).
+editions = [{'title_id': e['title_id'], 'name': e['name'], 'elf_sha256': e['eboot_sha256']} for e in spec['editions']]
+base_sha256 = hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+(S / 'app/discs').mkdir(exist_ok=True)
+for e in editions[1:]:
+    delta = P / 'packaging/discs' / (e['title_id'] + '.json')
+    if json.loads(delta.read_text())['base_sha256'] != base_sha256:
+        raise SystemExit('%s was made from another %s disc list; run scripts/release/disc_delta.py again.'
+                         % (delta, editions[0]['title_id']))
+    shutil.copy2(delta, S / 'app/discs' / delta.name)
+    e['delta'] = 'discs/' + delta.name
 meta = {'version': '0.6.0-windows', 'cpu': 'built on the player computer, -march=native',
         'elf_sha256': edition['eboot_sha256'], 'sdk_commit': spec['sdk_commit'],
         'rpcs3': json.loads((P / 'packaging/windows/rpcs3-windows.json').read_text()),
         'codecs': {p.name: sha(p) for p in (P / 'firmware/dev_flash/sys/external').glob('*.pic')},
-        'game_libs': [], 'sevenzip_sha256': sha(S / 'usr/bin/7z.exe'), 'pgo': pgo}
+        'game_libs': [], 'sevenzip_sha256': sha(S / 'usr/bin/7z.exe'), 'pgo': pgo, 'editions': editions}
 (S / 'app/package.json').write_text(json.dumps(meta, indent=2))
 for n in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
     copy(P / n, S / 'usr/share/licenses/port' / n)

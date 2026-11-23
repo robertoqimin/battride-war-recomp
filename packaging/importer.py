@@ -1,4 +1,4 @@
-"""Local, transactional import of the supported user-supplied PS3 disc."""
+"""Local, transactional import of a supported user-supplied PS3 disc."""
 import hashlib
 import json
 import os
@@ -352,16 +352,59 @@ def build_jobs():
     return max(1, min(cpus, (available - 1024**3) // BUILD_JOB_MEMORY))
 
 
-def clear_interrupted_install(data):
+# The editions the package supports, when its package.json predates the list.
+DEFAULT_EDITION = {'title_id': 'BLJS10220', 'name': 'Kamen Rider Battride War'}
+
+
+def disc_manifest(game):
+    """name -> {size, sha256} of a disc's files: PS3_GAME without the decrypted
+    EBOOT (*.elf), and PS3_DISC.SFB."""
+    game = Path(game)
+    manifest = {}
+    for p in sorted((game / 'PS3_GAME').rglob('*')):
+        if p.is_file() and p.suffix.lower() != '.elf':
+            manifest[p.relative_to(game).as_posix()] = {'size': p.stat().st_size, 'sha256': digest(p)}
+    p = game / 'PS3_DISC.SFB'
+    if p.exists():
+        manifest['PS3_DISC.SFB'] = {'size': p.stat().st_size, 'sha256': digest(p)}
+    return manifest
+
+
+def manifest_sha256(manifest):
+    return hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def manifest_delta(base, other, title_id, base_title_id):
+    """What another edition's disc changes from the base one (packaging/discs)."""
+    return {'title_id': title_id, 'base': base_title_id, 'base_sha256': manifest_sha256(base),
+            'changed': {n: v for n, v in other.items() if n in base and base[n] != v},
+            'added': {n: v for n, v in other.items() if n not in base},
+            'removed': sorted(n for n in base if n not in other)}
+
+
+def apply_delta(base, delta):
+    """The full manifest of an edition kept as a delta against the base disc's."""
+    if delta['base_sha256'] != manifest_sha256(base):
+        raise ImportError('The %s disc list does not match this package\'s %s list.' % (delta['title_id'], delta['base']))
+    manifest = {n: v for n, v in base.items() if n not in set(delta['removed'])}
+    manifest.update(delta['changed'])
+    manifest.update(delta['added'])
+    return manifest
+
+
+def clear_interrupted_install(data, title_id='BLJS10220'):
     """Remove the game's data installation if it was stopped before finishing.
 
-    On first boot the game copies its data to /dev_hdd0/game/BLJS10220DATA,
-    writing nativePS/system/BLJS10220DATA.start before and .installed after.
+    On first boot the game copies its data to /dev_hdd0/game/<title>DATA
+    (BLJS10220DATA, BLJS10219DATA for the Premium TV Sound Edition), writing
+    nativePS/system/<title>DATA.start before and .installed after.
     A folder without .installed then makes it stop at the title screen with
     BROKEN_EXIT_GAMEDATA; without the folder it installs again. Saves are
-    elsewhere (gamedata). Returns True if a folder was removed."""
-    install = Path(data) / 'game/game/BLJS10220DATA'
-    if not install.is_dir() or (install / 'USRDIR/nativePS/system/BLJS10220DATA.installed').is_file():
+    elsewhere (gamedata; both editions name them BLJS10220). Returns True if a
+    folder was removed."""
+    name = title_id + 'DATA'
+    install = Path(data) / 'game/game' / name
+    if not install.is_dir() or (install / 'USRDIR/nativePS/system' / (name + '.installed')).is_file():
         return False
     shutil.rmtree(install)
     return True
@@ -460,7 +503,49 @@ class Package:
     def __init__(self, root):
         self.root = Path(root).resolve()
         self.meta = json.loads((self.root / 'app/package.json').read_text())
+        # The base edition's disc list; the others are deltas against it (packaging/discs).
         self.manifest = json.loads((self.root / 'app/disc-manifest.json').read_text())
+        self.editions = []
+        for e in self.meta.get('editions') or [dict(DEFAULT_EDITION, elf_sha256=self.meta.get('elf_sha256'))]:
+            e = dict(e)
+            if e.get('delta'):
+                e['manifest'] = apply_delta(self.manifest, json.loads((self.root / 'app' / e['delta']).read_text()))
+            else:
+                e['manifest'] = self.manifest
+            self.editions.append(e)
+
+    def edition(self, data=None):
+        """The edition imported into this data folder (import.json), or the base one."""
+        try:
+            title = json.loads((Path(data) / 'import.json').read_text()).get('title_id') if data else None
+        except (OSError, ValueError):
+            title = None
+        return next((e for e in self.editions if e['title_id'] == title), self.editions[0])
+
+    def supported_text(self):
+        return ' or '.join('%s (%s)' % (e['name'], e['title_id']) for e in self.editions)
+
+    def disc_edition(self, entries):
+        """The edition whose disc files are all in the ISO listing with their sizes,
+        else ImportError naming the first difference from the closest one: the
+        fewest differences, then the most files found (a Premium disc missing a
+        song is still closer to the Premium list, which has its other songs)."""
+        problems = []
+        for e in self.editions:
+            missing = [n for n in e['manifest'] if n not in entries]
+            sizes = [n for n, i in e['manifest'].items() if n in entries and entries[n].get('Size') != str(i['size'])]
+            if not missing and not sizes:
+                return e
+            found = len(e['manifest']) - len(missing) - len(sizes)
+            problems.append(((len(missing) + len(sizes), -found), e, missing, sizes))
+        _, e, missing, sizes = min(problems, key=lambda x: x[0])
+        if missing:
+            raise ImportError('Required disc file is missing from the ISO: ' + missing[0] + '. Expected the Japan disc of '
+                              + self.supported_text() + '; see import.log.')
+        name = sizes[0]
+        raise ImportError('Disc file size differs from the supported Japan disc of %s (%s): %s (expected %s bytes, '
+                          'found %s). See import.log.' % (e['name'], e['title_id'], name, e['manifest'][name]['size'],
+                                                          entries[name].get('Size', 'unknown')))
 
     def tool(self, name, *args):
         return [self.root / 'usr/bin' / (name + EXE), *args]
@@ -545,16 +630,18 @@ class Package:
     def rpcs3(self, apprun, *args):
         return [apprun, '--allow-any-location', '--headless', *args]
 
-    def verify_game(self, game, status=lambda _: None):
-        for i, (name, info) in enumerate(self.manifest.items()):
+    def verify_game(self, game, status=lambda _: None, edition=None):
+        edition = edition or self.editions[0]
+        manifest = edition['manifest']
+        for i, (name, info) in enumerate(manifest.items()):
             safe_name(name)
             p = game / name
             if p.is_symlink() or any(x.is_symlink() for x in p.parents if x != game.parent):
                 raise ImportError('Imported game contains a link: ' + name)
             if not p.is_file() or p.stat().st_size != info['size'] or digest(p) != info['sha256']:
-                raise ImportError('Disc data is incomplete, encrypted, or differs from BLJS10220: ' + name)
+                raise ImportError('Disc data is incomplete, encrypted, or differs from %s: %s' % (edition['title_id'], name))
             if i % 500 == 0:
-                status('Verifying game files: %d / %d' % (i + 1, len(self.manifest)))
+                status('Verifying game files: %d / %d' % (i + 1, len(manifest)))
 
     def import_iso(self, iso, data, runner, status=lambda _: None, log=None, rpcs3=None):
         iso, data = Path(iso).resolve(), Path(data).resolve()
@@ -570,7 +657,7 @@ class Package:
             game = data / 'game'
             codecs = data / 'firmware/dev_flash/sys/external'
             if (old.get('source') == identity and (game / 'EBOOT.ELF').is_file()
-                    and digest(game / 'EBOOT.ELF') == self.meta['elf_sha256']
+                    and digest(game / 'EBOOT.ELF') == self.edition(data)['elf_sha256']
                     and all((codecs / n).is_file() and digest(codecs / n) == h
                             for n, h in self.meta['codecs'].items())):
                 status('Using previously imported game')
@@ -579,7 +666,7 @@ class Package:
         if (data / 'game').exists() or (data / 'firmware').exists():
             raise ImportError('The data folder contains an incomplete import. Choose an empty data folder; existing files were preserved.')
         free = shutil.disk_usage(data).free
-        required = sum(x['size'] for x in self.manifest.values()) + 2 * 1024**3
+        required = max(sum(x['size'] for x in e['manifest'].values()) for e in self.editions) + 2 * 1024**3
         if free < required:
             raise ImportError('Not enough free space. Allow at least 5 GB for import and game data.')
         stage = data / scratch_name('.i-' if WINDOWS else '.import-')
@@ -597,32 +684,30 @@ class Package:
             entries = disc_entries(listing)
             if not entries:
                 raise ImportError('Could not read the ISO filesystem. Check that the file is a complete ISO image. See import.log for the ISO reader output.')
-            for name, info in self.manifest.items():
-                if name not in entries:
-                    raise ImportError('Required disc file is missing from the ISO: ' + name + '. Expected the Japan BLJS10220 edition; see import.log.')
-                if entries[name].get('Size') != str(info['size']):
-                    raise ImportError('Disc file size differs from the supported Japan BLJS10220 edition: ' + name +
-                                      ' (expected %s bytes, found %s). See import.log.' % (info['size'], entries[name].get('Size', 'unknown')))
+            edition = self.disc_edition(entries)
+            status('Disc: %s (%s)' % (edition['name'], edition['title_id']))
+            if log:
+                log.write(('Edition: %s (%s)\n' % (edition['name'], edition['title_id'])).encode('utf-8'))
             pup = 'PS3_UPDATE/PS3UPDAT.PUP'
             if pup not in entries:
                 raise ImportError('The ISO must include PS3_UPDATE/PS3UPDAT.PUP for local audio codec setup.')
             # Only a disc that passed the listing checks is worth fetching RPCS3 for.
             apprun = self.rpcs3_helper(data, runner, status, rpcs3, log)
             selected = stage / 'selected-files.txt'
-            selected.write_text('\n'.join([*self.manifest, pup]) + '\n')
+            selected.write_text('\n'.join([*edition['manifest'], pup]) + '\n')
             status('Extracting your ISO. This can take a few minutes...')
             code, _ = runner.run(self.tool('7z', 'x', '-y', '-bd', '-bb0', '-spd', '-scsUTF-8',
                                           '-i@' + str(selected), '-o' + str(game), '--', iso), log=log)
             # Some PS3 UDF images return a header warning/error. Accept output
             # only after every expected file passes a size and SHA-256 check.
-            self.verify_game(game, status)
+            self.verify_game(game, status, edition)
             if code and log:
                 log.write(b'Archive returned a nonzero status; every expected game file was verified.\n')
             status('Preparing EBOOT from your disc...')
             runner.run(self.rpcs3(apprun, '--decrypt', game / 'PS3_GAME/USRDIR/EBOOT.BIN'),
                        env=self.helper_env(stage), log=log)
             elf = game / 'PS3_GAME/USRDIR/EBOOT.elf'
-            if not elf.is_file() or digest(elf) != self.meta['elf_sha256']:
+            if not elf.is_file() or digest(elf) != edition['elf_sha256']:
                 raise ImportError('EBOOT could not be prepared or does not match this port.')
             elf.rename(game / 'EBOOT.ELF')
             status('Extracting audio codecs from your disc firmware...')
@@ -649,7 +734,8 @@ class Package:
                 (stage / name).rename(target)
                 committed.append(target)
             tmp = data / 'import.json.tmp'
-            tmp.write_text(json.dumps({'source': identity, 'title_id': 'BLJS10220', 'elf_sha256': self.meta['elf_sha256']}, indent=2))
+            tmp.write_text(json.dumps({'source': identity, 'title_id': edition['title_id'],
+                                       'elf_sha256': edition['elf_sha256']}, indent=2))
             tmp.replace(marker)
             # RPCS3 was only needed for the EBOOT and the codecs.
             shutil.rmtree(apprun.parent.parent, ignore_errors=True)
@@ -737,17 +823,18 @@ class Package:
                    LC_ALL='C.UTF-8', PS3_DEV_FLASH=str(Path(data) / 'firmware/dev_flash'))
         return env
 
-    def profiles(self):
+    def profiles(self, elf_sha256=None):
         """GCC profiles shipped for this game and this toolchain, or None.
 
         They are execution counts recorded by running the translated code
-        (scripts/perf/pgo_train.py), applied when compiling it on this computer."""
+        (scripts/perf/pgo_train.py), applied when compiling it on this computer,
+        and fit only the EBOOT they were trained with (one edition)."""
         path = self.root / 'usr/share/battride/pgo'
         try:
             info = json.loads((path / 'profile.json').read_text())
         except (OSError, ValueError):
             return None
-        if info.get('sdk_commit') != self.meta['sdk_commit'] or info.get('eboot_sha256') != self.meta['elf_sha256']:
+        if info.get('sdk_commit') != self.meta['sdk_commit'] or info.get('eboot_sha256') != (elf_sha256 or self.editions[0]['elf_sha256']):
             return None
         return path
 
@@ -761,10 +848,10 @@ class Package:
             self._sources_sha256 = tree_sha256(port, [n for n in names if is_build_input(n)])
         return self._sources_sha256
 
-    def profiles_sha256(self):
+    def profiles_sha256(self, elf_sha256=None):
         """The shipped GCC profiles that apply, or None: retrained profiles rebuild the game, the same files
         shipped again do not."""
-        path = self.profiles()
+        path = self.profiles(elf_sha256)
         if path is None:
             return None
         return tree_sha256(path, [p.relative_to(path).as_posix() for p in path.rglob('*') if p.is_file()])
@@ -778,17 +865,18 @@ class Package:
                 return tree_sha256(self.root, [name])
         return None
 
-    def build_identity(self):
+    def build_identity(self, data=None):
         # No package version: a release that changes none of these keeps the game the player built.
-        return {'recipe': BUILD_RECIPE, 'sdk': self.meta['sdk_commit'], 'elf_sha256': self.meta['elf_sha256'],
+        elf = self.edition(data)['elf_sha256']
+        return {'recipe': BUILD_RECIPE, 'sdk': self.meta['sdk_commit'], 'elf_sha256': elf,
                 'sources': self.sources_sha256(), 'toolchain': self.toolchain_sha256(),
-                'game_libs': self.meta.get('game_libs', []), 'cpu': cpu_identity(), 'pgo': self.profiles_sha256()}
+                'game_libs': self.meta.get('game_libs', []), 'cpu': cpu_identity(), 'pgo': self.profiles_sha256(elf)}
 
     def built_runner(self, data):
         """The game built on this computer, or None when it must be (re)built."""
         out = Path(data) / 'runner'
         try:
-            if json.loads((out / 'build.json').read_text()) == self.build_identity() and (out / ('game-runner' + EXE)).is_file():
+            if json.loads((out / 'build.json').read_text()) == self.build_identity(data) and (out / ('game-runner' + EXE)).is_file():
                 return out / ('game-runner' + EXE)
         except (OSError, ValueError):
             pass
@@ -827,7 +915,7 @@ class Package:
         work = data / ('.b' if WINDOWS else '.build')
         for old in data.glob('.b-*' if WINDOWS else '.build-*'):
             shutil.rmtree(old, ignore_errors=True)      # random-named folders of 0.6.0 and earlier
-        base = {k: v for k, v in self.build_identity().items() if k != 'sources'}
+        base = {k: v for k, v in self.build_identity(data).items() if k != 'sources'}
         try:
             if json.loads((work / 'base.json').read_text()) != base:
                 raise ValueError
@@ -857,7 +945,7 @@ class Package:
             if code:
                 raise ImportError('Translating the game code failed. See build.log.')
             build = work / 'build'
-            profiles = self.profiles()
+            profiles = self.profiles(self.edition(data)['elf_sha256'])
             if profiles:
                 shutil.rmtree(work / 'pgo', ignore_errors=True)
                 profiles = place_profiles(profiles, work / 'pgo', sdk)
@@ -906,7 +994,7 @@ class Package:
                 tmp = out / 'game-runner.tmp.exe'
                 shutil.copy2(build / 'kamenriderbattridewarsport.exe', tmp)
                 tmp.replace(out / 'game-runner.exe')
-                (out / 'build.json').write_text(json.dumps(self.build_identity(), indent=2))
+                (out / 'build.json').write_text(json.dumps(self.build_identity(data), indent=2))
                 status('Game built for this computer.')
                 return out / 'game-runner.exe'
             shutil.rmtree(out / 'lib', ignore_errors=True)
@@ -923,7 +1011,7 @@ class Package:
             if code:
                 raise ImportError('Could not finish the game executable. See build.log.')
             tmp.replace(out / 'game-runner')
-            (out / 'build.json').write_text(json.dumps(self.build_identity(), indent=2))
+            (out / 'build.json').write_text(json.dumps(self.build_identity(data), indent=2))
             status('Game built for this computer.')
             return out / 'game-runner'
         finally:

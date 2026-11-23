@@ -66,7 +66,8 @@ for d in ('app','usr/bin','usr/lib','usr/share/glib-2.0/schemas'):(S/d).mkdir(pa
 for n in ('importer.py','launcher.py'):copy(P/'packaging'/n,S/'app'/n)
 copy(P/'CREDITS.md',S/'app/CREDITS.md')
 spec=json.loads((P/'recompile.json').read_text())
-# The package is built for the normal edition for now (docs/PLANO0.6.1.md, E3/E4).
+# The base edition (BLJS10220): its disc list ships whole, the others as deltas;
+# the shipped profiles are trained on it (docs/PLANO0.6.1.md, E4).
 edition=spec['editions'][0]
 # The port's public sources, exactly as the source export allowlist names them.
 public=[l.strip() for l in (P/'PUBLIC_FILES.txt').read_text().splitlines() if l.strip() and not l.startswith('#')]
@@ -174,9 +175,21 @@ for p in sorted((P/'game/PS3_GAME').rglob('*')):
 p=P/'game/PS3_DISC.SFB'
 if p.exists():manifest['PS3_DISC.SFB']={'size':p.stat().st_size,'sha256':sha(p)}
 (S/'app/disc-manifest.json').write_text(json.dumps(manifest,separators=(',',':')))
+# The other editions' discs, as deltas against this one (packaging/discs, made by
+# scripts/release/disc_delta.py); the importer rebuilds their full lists (importer.apply_delta).
+editions = [{'title_id': e['title_id'], 'name': e['name'], 'elf_sha256': e['eboot_sha256']} for e in spec['editions']]
+base_sha256 = hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+(S / 'app/discs').mkdir(exist_ok=True)
+for e in editions[1:]:
+    delta = P / 'packaging/discs' / (e['title_id'] + '.json')
+    if json.loads(delta.read_text())['base_sha256'] != base_sha256:
+        raise SystemExit('%s was made from another %s disc list; run scripts/release/disc_delta.py again.'
+                         % (delta, editions[0]['title_id']))
+    shutil.copy2(delta, S / 'app/discs' / delta.name)
+    e['delta'] = 'discs/' + delta.name
 meta={'version':'0.6.0','glibc_min':'2.35','cpu':'built on the player computer, -march=native','elf_sha256':edition['eboot_sha256'],
       'sdk_commit':spec['sdk_commit'],'rpcs3':json.loads((P/'packaging/linux/rpcs3.json').read_text()),'codecs':{p.name:sha(p) for p in (P/'firmware/dev_flash/sys/external').glob('*.pic')},
-      'game_libs':game_libs,'sevenzip_sha256':sha(S/'usr/bin/7z'),'runtime_sha256':sha(args.runtime),'pgo':args.pgo is not None}
+      'game_libs':game_libs,'sevenzip_sha256':sha(S/'usr/bin/7z'),'runtime_sha256':sha(args.runtime),'pgo':args.pgo is not None,'editions':editions}
 (S/'app/package.json').write_text(json.dumps(meta,indent=2));(S/'app/library-sources.json').write_text(json.dumps(bom,indent=2))
 # Exact Ubuntu package versions in the build image, for the corresponding sources.
 system_files.update(appimage_toolchain.COPIED)

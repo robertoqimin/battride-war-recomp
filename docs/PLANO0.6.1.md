@@ -1022,6 +1022,20 @@ para a edição normal: deixa o port mais robusto a qualquer mudança do lifter.
   `cellGame` o nome da pasta de dados.
 - O launcher mostra qual edição foi importada.
 
+> **Feito em 22/11.** A lista de arquivos do disco normal continua indo inteira no pacote. A da Premium vai como
+> diferença em relação a ela, em `packaging/discs/BLJS10219.json`, com 17 KB: 4 arquivos mudam
+> (`PS3_DISC.SFB`, `LIC.DAT`, `PARAM.SFO`, `EBOOT.BIN`) e 98 são novos (58 músicas `.msf`). Ela é gerada pelo
+> `scripts/release/disc_delta.py` e guarda o hash da lista base, que os dois montadores de pacote conferem. O
+> `package.json` ganhou `editions`. O importer escolhe a edição pela listagem do ISO: a que tem todos os arquivos com
+> os tamanhos certos. Se nenhuma bate, o erro fala da mais próxima. Ele grava o título no `import.json`. A identidade
+> do build, o hash do EBOOT e os perfis de PGO seguem a edição importada; os perfis atuais são só da normal, então
+> a Premium compila sem eles até a E4. A pasta de dados instalada é `BLJS10219DATA` na Premium. **Os saves não
+> mudam:** o EBOOT da Premium também usa `BLJS10220` como prefixo de save, então as duas edições usam os mesmos
+> saves. O título que o jogo vê vem do `PARAM.SFO` do disco (`cellGame_init_from_paramsfo`). O launcher lista as
+> duas edições e mostra a importada antes de abrir o jogo. Testado com as listagens reais dos dois ISOs (7-Zip):
+> cada um é reconhecido como a sua edição. Ainda não foi feita uma importação completa da Premium, com extração e
+> descriptografia: fica para a E5, com a primeira tradução dela.
+
 ### E4: perfis de PGO (horas)
 
 Os perfis são por chunk e por função: os da edição normal não casam com os chunks da Premium. Um segundo conjunto,

@@ -120,9 +120,11 @@ def main():
             if code:
                 raise ImportError('Bundled build tool does not start: ' + name + '\n' + text[-800:])
             compilers[name] = text.splitlines()[0] if text else ''
-        print(json.dumps({'status': 'OK', 'title_id': 'BLJS10220', 'files': len(package.manifest),
+        print(json.dumps({'status': 'OK', 'title_id': package.editions[0]['title_id'], 'files': len(package.manifest),
                           'cpu': 'built locally with -march=native (SSE4.1 minimum)', 'toolchain': compilers,
-                          'elf_sha256': package.meta['elf_sha256']}, indent=2))
+                          'elf_sha256': package.editions[0]['elf_sha256'],
+                          'editions': [{'title_id': e['title_id'], 'name': e['name'], 'files': len(e['manifest']),
+                                        'elf_sha256': e['elf_sha256']} for e in package.editions]}, indent=2))
         return
     default_data, config_path = default_dirs()
     data = (args.data_dir or default_data).resolve()
@@ -302,7 +304,9 @@ def main():
             about = Adw.PreferencesGroup(
                 title='Kamen Rider: Battride War',
                 description=('Experimental Windows port' if WINDOWS else 'Experimental Linux port') +
-                            '  •  Japan / BLJS10220\n\n'
+                            '  •  Japan / ' + ', '.join(
+                                ('Premium TV Sound Edition (%s)' if 'Premium' in e['name'] else '%s') % e['title_id']
+                                for e in package.editions) + '\n\n'
                             'Select your game ISO and press Play. The first launch downloads the official RPCS3 '
                             'build to read your disc, imports its files and builds the game for this computer '
                             '(15-60 minutes, once). Data, saves and logs stay in the data folder.')
@@ -808,7 +812,9 @@ def main():
                     (log_dir / 'graphics.log').write_text(details)
                     if code:
                         raise ImportError('Vulkan/window check failed. See graphics.log: ' + details[-1800:])
-                    if clear_interrupted_install(dest):
+                    edition = package.edition(dest)
+                    self.message('%s (%s)' % (edition['name'], edition['title_id']))
+                    if clear_interrupted_install(dest, edition['title_id']):
                         self.message('The game\'s data installation was interrupted last time; it will install again.')
                     self.playing = True
                     self.message('Starting game. Logs: ' + str(log_dir))

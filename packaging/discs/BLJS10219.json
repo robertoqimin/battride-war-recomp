@@ -1,0 +1,418 @@
+{
+ "added": {
+  "PS3_GAME/USRDIR/nativePS/seq/ui/ptse/CustomSoundtrack.seq": {
+   "sha256": "81434eb8b9246640441e534554128be067b6725c6d04d15af0f23e4fe0f81908",
+   "size": 15036
+  },
+  "PS3_GAME/USRDIR/nativePS/seq/ui/ptse/Title.seq": {
+   "sha256": "a671226123f63d4af220a3062dc22040bcd656a5001df81167e95bbdc263c520",
+   "size": 1684
+  },
+  "PS3_GAME/USRDIR/nativePS/seq/ui/ptse/chronicle/setup.seq": {
+   "sha256": "05514829082bda04343372a6d96d81b04f0acb198a893a14db1612f5bd9e8328",
+   "size": 2632
+  },
+  "PS3_GAME/USRDIR/nativePS/seq/ui/ptse/mainmenu/setup.seq": {
+   "sha256": "9c4a279dd3d15e1009803ac9aba5b7e122d799c337a3b58cd6b30a353efb361f",
+   "size": 3840
+  },
+  "PS3_GAME/USRDIR/nativePS/seq/ui/ptse/ptse/native.seq": {
+   "sha256": "03c0c6857d872d8eec8c7195f162c32e9bd7934838ec3861f19171004b0a4b9e",
+   "size": 352
+  },
+  "PS3_GAME/USRDIR/nativePS/seq/ui/ptse/title/setup.seq": {
+   "sha256": "c6dae5a9bed363bbd8f788210b0cff7527cac3928f07bfffd9e3534917bd2991",
+   "size": 500
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_AGI_1.msf": {
+   "sha256": "1c959de4f781000001d3689d20bbbcca8bf2b52529da9eab1ac61179c804d0b3",
+   "size": 1919751
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_AGI_2.msf": {
+   "sha256": "a2a1865699cacd4018fcd322ff640445448792fd4e96f35f146a7c7c0e8a9ae9",
+   "size": 1440352
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_BLD_1.msf": {
+   "sha256": "0bd880515a525e877810d61c11716c1c066f045fb9afba75faa981ab92985313",
+   "size": 1512241
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_BLD_2.msf": {
+   "sha256": "b01b4dd641efc8f4c039327cc977ea0c0d6b1f95c58e9989b5bca6d73768b630",
+   "size": 1463340
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_DCD_1.msf": {
+   "sha256": "8680ab3be1351444fa4490d9f3a9c516cb72f0119a0872155dfb052163a59c7b",
+   "size": 1447875
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_DCD_2.msf": {
+   "sha256": "a88810a09a9f0a3bdb93153d33a6e5c227e62c913ec66ec20fe1c65f8588377b",
+   "size": 693459
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_DCD_3.msf": {
+   "sha256": "61cc441a720d1c2b47a1e78504a4018846354b9fe61cd4bcee08448fa6bd034f",
+   "size": 1421544
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_DEN_1.msf": {
+   "sha256": "b8b17b5cebfacddd18ae569e49cae922b524b4c8f9d5f8818826474c4afd2cc0",
+   "size": 1526033
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_DEN_2.msf": {
+   "sha256": "7799dd03f4a2ea1079cd912535bae7e79cc2abf95855ffa0d56e9968c8665bf6",
+   "size": 1437008
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_FAZ_1.msf": {
+   "sha256": "1024a9ee9428f9b7c98778cd7ffc5d6294f118c13bed6fcee69d3fbac54a23c8",
+   "size": 1398974
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_FAZ_2.msf": {
+   "sha256": "76e9c2a6dae5452fba4f21fdb18dadb3b6b5f997a464581997262af2f0e3331c",
+   "size": 1625090
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_FOZ_1.msf": {
+   "sha256": "2b2352fc2aef30a68fe2a47c4b116b52b75a5422ebbec0111a433d964c16cea7",
+   "size": 1172440
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_FOZ_2.msf": {
+   "sha256": "987e2f31b3ebf05ab078dd0f97fbbc82fecc9e82dbcd95039ab46809b342b8a0",
+   "size": 1366791
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_HIB_1.msf": {
+   "sha256": "4813d7f39f5adb744c29502c616ffd8949adda9976a413770e1822af7c094b57",
+   "size": 1192920
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_HIB_2.msf": {
+   "sha256": "b48e034904cadc01487be64cbce04a904b08d5897f31f20f1fe460ad4f94277d",
+   "size": 1482566
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KAB_1.msf": {
+   "sha256": "3c4ba52b034d303be2ac833fc907f37c9d7b06f0b942cce80ba901a71ca468b0",
+   "size": 1572427
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KAB_2.msf": {
+   "sha256": "d8d93be7435e04bbdd75a70fcf82d39145a63424e046ba4161935fcf12e9e770",
+   "size": 1588309
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KIV_1.msf": {
+   "sha256": "fe7262f8f3f3d598f3597e2f3a97075c7ec0428fb3d1f7b9d323d272ce7acd5a",
+   "size": 1422798
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KIV_2.msf": {
+   "sha256": "35371cb70fb092792663ff36af70412ecf77fa0e2303a33fbd9bdb60a4c81d5f",
+   "size": 1368463
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KRW_1.msf": {
+   "sha256": "6bba0813d2bb1404f4bb50b46c187e9fcf73ab92cec6b19c1f2ee4a530e34f67",
+   "size": 1130226
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KRW_2.msf": {
+   "sha256": "b8a35827c6cebac096f58c2a2651c9fc155f08faa72eef6c35ad303b4183989f",
+   "size": 1298246
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KUG_1.msf": {
+   "sha256": "48952b766b014cf08f3c8c2dedacf0e2d7a97b709472c6c197809e5ba5852253",
+   "size": 1606700
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_KUG_2.msf": {
+   "sha256": "73e2314364896edeedb5db33f1114ecec158cc493069edcd031b1b3580320378",
+   "size": 1866670
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_OOO_1.msf": {
+   "sha256": "e7b622adee65101503dfb5695e6bd528608ea7a6a3ce433aa1be801f2041bbbd",
+   "size": 1198353
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_OOO_2.msf": {
+   "sha256": "8738c682a7e4a876571194d0795ec1f92a7c1f3a7e09dead42450364a1cbe8b2",
+   "size": 1889240
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_RYU_1.msf": {
+   "sha256": "6dbc8af3ea8d603311e954cc3cf861314705bf1f2373162341dbc5dacf4d5e58",
+   "size": 1514749
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_RYU_2.msf": {
+   "sha256": "5af7938b616364188b611564eb47090c5eae28c1c6bb22f336ec1b3c386b44ca",
+   "size": 1577860
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_WIZ_1.msf": {
+   "sha256": "2c7f1af2414b3ca3e4afb39df7b2317e002c36080e8c99356c9b07ec20194178",
+   "size": 1901779
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_WIZ_2.msf": {
+   "sha256": "e96d372d0ee79e39f7b7dc6d3eaf5e64eac4a1b2575485ad9e43847d8ba56a34",
+   "size": 1401900
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/ORG_WIZ_3.msf": {
+   "sha256": "08facf546b88a63d4f44a4a83af0ca78fd5f8144c3c9df6f16e5ecaff7d1ba54",
+   "size": 2287137
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PREMIUM.lst": {
+   "sha256": "f38fd59045924e0baa588d4acd8d0f6ef7940cbcf08b3768a121d08c06e31580",
+   "size": 1774
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PREMIUM.spm": {
+   "sha256": "64c3c1c0ec62476ce22526e22ee31a9376d1d6408b245b12951f27cda3962429",
+   "size": 3036
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_001.msf": {
+   "sha256": "349acd4518c636da76de9562b31649c2c858154442a6ef87856e9345ddda6ce7",
+   "size": 336104
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_002.msf": {
+   "sha256": "76c2adc13e4979130f1c94d5159d3b1803c602936fc122e56dcd8f8fe6264a5f",
+   "size": 659186
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_003.msf": {
+   "sha256": "ff9c24c32e262871cbe7130fc0bf6417fd36146dac760cb7bebc7d926b19adc4",
+   "size": 594820
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_004.msf": {
+   "sha256": "4acb293a45f0203cc535f67c0e051a5219bd66e7a502e6d1dad8a4de2f3b8013",
+   "size": 366615
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_005.msf": {
+   "sha256": "c9d79c1aad322657bed47826e1f9bf294ca7c3f672d92d13635773cec501d501",
+   "size": 801292
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_006.msf": {
+   "sha256": "d4655e1523736c18f708bd19055583d91ee8cbc505926b42707e2daa542b2e4e",
+   "size": 588551
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_007.msf": {
+   "sha256": "4f7135e87716ef8b19eb39fa5b2014533015dcb7e0b33ef0f06549f8e61c28fd",
+   "size": 717282
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_008.msf": {
+   "sha256": "b3f90251aacbb6f65e2227024f48f1b2240b91d71de594d4a312a7ec14b55385",
+   "size": 525439
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_009.msf": {
+   "sha256": "a331e19d8011f2cc57a50aa7fc35c45993097e052a8904757bab775648cf4bb3",
+   "size": 636198
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_010.msf": {
+   "sha256": "e92e019dfe27f0c1224cfb4ad7325a6c3474d5896a60b4e88d53b455f720667f",
+   "size": 493674
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_011.msf": {
+   "sha256": "af08660918ed64dbbe3d27f2b889c3e60f63c58e360dea873112d8b3afdafe9f",
+   "size": 509557
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_012.msf": {
+   "sha256": "baaeddab91af12d0e88a3a10fb96ee764cc1e03af48a4d463e03d495f460de7e",
+   "size": 431398
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_013.msf": {
+   "sha256": "b3842372472cd3337901d954d33aa5985011384f306311880fb5c3fae7219740",
+   "size": 567235
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_014.msf": {
+   "sha256": "63e15c6f8c3fc7ec0416ee4bede450446100c8d84d03433aa9efde01cfd297f8",
+   "size": 683846
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_FIN_015.msf": {
+   "sha256": "fd746ca49e1ebfe24fb42ffcec5e25a30ad06641fa745e2ac47e9da1560a930f",
+   "size": 463999
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_001.msf": {
+   "sha256": "a73e2fbab9891214c038267239f42d3180194f06f2621da5c46e43fac627ee5c",
+   "size": 421366
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_002.msf": {
+   "sha256": "12549858bb5bc9478a496a2e0310add3dbb8c979227f0691be388f25cb3fb185",
+   "size": 569742
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_003.msf": {
+   "sha256": "0c27645ee1abfe2fc8a7724ad9f54660ce2527e51a825be66c02ea847d30af88",
+   "size": 520005
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_004.msf": {
+   "sha256": "699390fd02c2dd517c8ce92837b3c25dc34c74aea9cdb8d1a966206e5038042e",
+   "size": 380824
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_005.msf": {
+   "sha256": "d3fc63a27e7ebedee836776f43e972bf574e857f4c5b3861669299f28b749b1c",
+   "size": 528782
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_006.msf": {
+   "sha256": "95e4d7e245af508f79381bbe095cc47799093be20cf12322f394f3c32701d8d3",
+   "size": 539231
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_007.msf": {
+   "sha256": "3a39d214f8a86b778248eb2854f82405c8232702c4ca0d0a687fb0447f8b9631",
+   "size": 668380
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_008.msf": {
+   "sha256": "c0c013786ac0599f7c5db1059741f2f82bf36b0514ea5437f4de5e6176c163f6",
+   "size": 546336
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_009.msf": {
+   "sha256": "121578226fb89c6363af182f9a24828dbec3d511357bd7281c25db5cf2b1f8e7",
+   "size": 518751
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_010.msf": {
+   "sha256": "2e6d9b899cacfc71b71c74fa6460f59d12ed4d6d20a0fe50d8a4bac4b7858567",
+   "size": 522930
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_011.msf": {
+   "sha256": "367c6126b57d69d62b2020223e9a6de2809de6d0f7404cc715fd2c7693e9d9bb",
+   "size": 621569
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_012.msf": {
+   "sha256": "f712a4bf45fc36f7e8cd726b9db829762752ae7fa9c707320c882796ace958b0",
+   "size": 567652
+  },
+  "PS3_GAME/USRDIR/nativePS/sound/BGM/PREMIUM/PTSE_MOV_013.msf": {
+   "sha256": "aa59461e91618f45f48738971eb0ab6c181193b5a55e387cbf2a629f00354e76",
+   "size": 837654
+  },
+  "PS3_GAME/USRDIR/nativePS/string/ptse/ptse_bgm_ja.sta": {
+   "sha256": "fb90e4ad3adcc2743aea2def7d1eb772904450ad8e0721c746e555ac9c6d0661",
+   "size": 629
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/ArrowBottom.ssa": {
+   "sha256": "aaf2801075244e781e861c292a16487e9c60ed89611488e04de5e828c25700b4",
+   "size": 1080
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/ArrowTop.ssa": {
+   "sha256": "63a1017768974f57175dfcc6b7b6d040fe2a83c23fa362e238f8d90f4dcad081",
+   "size": 1080
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/ContentCursor.ssa": {
+   "sha256": "c4f3184c1466c3e8e86b63798129fcdb96d84d3e4e9f7a03840bdd4b802836fc",
+   "size": 1192
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/Contentbar.ssa": {
+   "sha256": "7a3e8c00fee3af6d0766b2a9f228260e1b346b257b66f43c7d6acd83c8f5bced",
+   "size": 1996
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/Cursor.ssa": {
+   "sha256": "019863d174f1f949f84eaf025a63de6291eddf50be8e3186f5270de6f3839744",
+   "size": 5720
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/CustomSoundtrack.spl": {
+   "sha256": "ff125503fbb4040b911f777f26b29af76abeabc7a83a630de8327d3f2e5ae789",
+   "size": 11184
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/PlayListBar.ssa": {
+   "sha256": "75537414ac9150e3c48c74b70f2845208eeb789b94692fa50a7562b79510e909",
+   "size": 2828
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/PlayListCursor.ssa": {
+   "sha256": "1d89982bcc85e27e2d44328d17460c5cd3e79b7167cbfa94d9d8ee68a98f0d8f",
+   "size": 1788
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/Select.ssa": {
+   "sha256": "b409256e3b936e35e392b624d0f1ee59649e0993205fde6647b6db85b01220b3",
+   "size": 968
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/SliderBar.ssa": {
+   "sha256": "6c6e21ebdb8df7aa3e7e7a2b3726d0613c56152faf6c98b9e57db45584e47330",
+   "size": 2932
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/SliderFrame.ssa": {
+   "sha256": "f0e928c8cd0a854a754fbb5523c867e169382bb6cba457449999b0296b720235",
+   "size": 2832
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/SoundNumber.ssa": {
+   "sha256": "3079792d4a466000508016bb541f343b6bdbe3c9fc09da866a54028364dc6255",
+   "size": 1044
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/SoundNumberCursor.ssa": {
+   "sha256": "4be027d3fd800e32ece806bfab1dd0a95db5297afaeb6ffc8260bcd7d916810c",
+   "size": 1240
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/Title.ssa": {
+   "sha256": "fa7fe30cd29b649bf5d28c58594253d1f9d1b8d82f2fbc67cc42cd0a2ebf0ecd",
+   "size": 3968
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/Window.ssa": {
+   "sha256": "762252376a486b18e61d95733faa9ed2a0e774cd6543e88a589b7b0ceb4383f1",
+   "size": 7676
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/Window2.ssa": {
+   "sha256": "a3155ad87358698536b23c6ec12372b8de3f95caf53d775d7f0264d29acbed35",
+   "size": 16908
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/textures/customsound01_CO.dds": {
+   "sha256": "3ab08264cc16d748b6a937f4cb90a6e6ef86e2276f7ad9829852cdaa0c2d4195",
+   "size": 1048704
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/CustomSoundtrack/textures/customsound02_CO.dds": {
+   "sha256": "b2e4a808cbb002b523bcb377a983f062d3e74d6cc2547a89620e65bc64f577c6",
+   "size": 65664
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/BGEff01.ssa": {
+   "sha256": "ebeba94fc947d6d2494195b73b3d38f9fe139c9ea56246a9fbe6efb7e2bb2423",
+   "size": 7368
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/BGEff02.ssa": {
+   "sha256": "290cb7a21a3bc331d58046189d5953975bd5dcd99630fa91961036974c7d470b",
+   "size": 4768
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/BGRider.ssa": {
+   "sha256": "3c75ad52dd2d1ad1fa6b440434d5b9f990738dba25c30382529e796d85db537d",
+   "size": 14260
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Logo.ssa": {
+   "sha256": "3f25e1e62ee0dcf8cca7b616095f5132fc394bbb3a99479d2e5f5e39a0b95fc1",
+   "size": 11604
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Textures/TitleBG01_CO.dds": {
+   "sha256": "42bf0d8afbae88b33f94bc05da07798ff77be6497ad4fe4aef6c56929a31e59e",
+   "size": 131200
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Textures/TitleBG02_CO.dds": {
+   "sha256": "a403a92769c2913e612aed51da374f1882f4f29321d22f2a85cdec313514a666",
+   "size": 524416
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Textures/TitleBG03_CO.dds": {
+   "sha256": "2ca9a96782b93cdc998860b0da0978f62958e80ec9e82f593cb052f599dffd90",
+   "size": 131200
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Textures/TitleBG05_CO.dds": {
+   "sha256": "205bdfe9ca77c35bf5a8b0b48632b67bad7ff2091566dfed5365b9e77b33efe2",
+   "size": 1048704
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Textures/TitleBG06_CO.dds": {
+   "sha256": "04abfbf8f653f1f59255f650896cc61ab546dd260bdc284b2596d3e395520cd2",
+   "size": 131200
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Textures/TitleBG_CO.dds": {
+   "sha256": "321f249918e09b6e27a668ab2611fec3025e1a29467c0297a278ad8bbc83d3b6",
+   "size": 524416
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/Title.spl": {
+   "sha256": "86580dd95190981e0b378c6f4e23ed4dae7bc6a3dddc085efd17eff3d26c4cdb",
+   "size": 1708
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/TitleBG.ssa": {
+   "sha256": "0a8025bd7f667f5c828d888a920dd9825cabc89e8eddcfa86c7c1620df762cbf",
+   "size": 1640
+  },
+  "PS3_GAME/USRDIR/nativePS/ui/ptse/Title/TitleWord.ssa": {
+   "sha256": "3e1802ba8c736bb43afdcd385475348a4b99a5c9cf29e1daea161d97f1c5ec39",
+   "size": 3884
+  }
+ },
+ "base": "BLJS10220",
+ "base_sha256": "9ff603702945f5e43247f146a1000ef62966137457147fec805df618f323a4b3",
+ "changed": {
+  "PS3_DISC.SFB": {
+   "sha256": "3430e8d261f170db1189034ea1d355555fdb49ef457fda3eaa519ee4bda9dbba",
+   "size": 1536
+  },
+  "PS3_GAME/LICDIR/LIC.DAT": {
+   "sha256": "4f65c9c24a3e25922d20edbdbb64e75055f7ac3390ebb031eb4b57525d404d00",
+   "size": 65536
+  },
+  "PS3_GAME/PARAM.SFO": {
+   "sha256": "db3dd0d650f51312ee8d8acb54c3a8709291b0d7323cc0868a815bd628f14122",
+   "size": 1192
+  },
+  "PS3_GAME/USRDIR/EBOOT.BIN": {
+   "sha256": "d86e5f32db8987348a8a87d7f998f4a4635b07e2a01ec300a0502f625eb3a800",
+   "size": 7254328
+  }
+ },
+ "removed": [],
+ "title_id": "BLJS10219"
+}

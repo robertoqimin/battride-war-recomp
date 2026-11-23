@@ -24,6 +24,7 @@ include/port_ppu_memory.h
 include/port_ppu_native.h
 include/port_ppu_store_gate.h
 include/ppu_vmx.h
+packaging/discs/BLJS10219.json
 packaging/graphics_probe.c
 packaging/importer.py
 packaging/launcher.py
@@ -76,6 +77,7 @@ scripts/release/build_windows_package.py
 scripts/release/collect_sources.py
 scripts/release/collect_windows_sources.py
 scripts/release/compare_profiles.py
+scripts/release/disc_delta.py
 scripts/run-vulkan.sh
 shaders/fsr1.comp
 tests/test_frame_report.py
