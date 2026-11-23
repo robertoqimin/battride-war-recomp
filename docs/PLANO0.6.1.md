@@ -1329,6 +1329,16 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > marcado no buffer de comandos, depois do flush de estado do próprio jogo, e o motor RSX desenha o registro nativo
 > nesse ponto da sequência, com shader e vértices próprios e a textura pelo seu cache. Título, menus e HUD da luta
 > saem iguais ao motor RSX; ~4 a 9 mil desenhos nativos por segundo. Detalhes em `docs/RENDERER.md`.
+>
+> **Mais efeitos e os passes de tela cheia, 23/11.** O passe cobre agora os quatro efeitos do 2D
+> (`SH_PRETRANS_TEX_COL_P`, `SH_PRETRANS_COL_P`, `SH_PRETRANS_TEX_COL_MUL_P`, `SH_PRETRANS_TEX_P`), cada um com o
+> programa de fragmento do próprio jogo escrito à mão, e a declaração de 20 bytes dos passes de tela cheia (o vídeo
+> de abertura, as composições). A textura e o sampler passam a vir da unidade 0, que o flush do jogo já ligou, pelo
+> bind do próprio motor (alvos de render, qualquer formato). Edição normal e Premium: logos, vídeo, título, menus,
+> configuração da missão, cena e luta iguais ao motor RSX; na luta ~95% dos desenhos do caminho 2D são nativos
+> (~7.500/s); com o jogo ficam os filtros (`SH_BLOOMFAKE_*`, DOF, FXAA, gauss, radial blur), `SH_MATERIAL_SHADOW_P` e
+> o quadro de cor de tela cheia (fica branco e opaco por cima dos logos, a entender). Custo: 49,7 fps contra 48,9
+> com o passe desligado.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 

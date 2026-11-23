@@ -196,14 +196,52 @@ RSX dos sprites. Diagnóstico: `PORT_NATIVE_PASS=hud-both` (o nativo e o do jogo
 (magenta, só textura, só cor). O que custou achar: o vertex shader embutido do motor declara os 16 atributos, e com
 o layout compacto a cor e a UV caíam nas entradas erradas; e sem o flush do jogo o alvo de render nunca era ligado.
 
+## Passe nativo do 2D: mais efeitos e tela cheia (23/11)
+
+`PORT_NATIVE_PASS=hud` registra a cada 5 s por que cada desenho ficou com o jogo (efeito, declaração, contagem).
+Na rota logos → título → menus → luta, sobravam `SH_PRETRANS_COL_P`, `SH_PRETRANS_TEX_COL_MUL_P` e
+`SH_PRETRANS_TEX_P`, e os passes de tela cheia.
+
+**Os programas de cada efeito.** O flush de estado do jogo liga o programa de fragmento antes do marcador, então o
+motor sabe qual é, e `RSX_ENGINE_SHADER_DUMP` dá a tradução:
+
+| Efeito | Programa (`location 0`) | O que faz |
+|---|---|---|
+| `SH_PRETRANS_TEX_COL_P` | `0x01223480` | `textura × saturate(cor)` |
+| `SH_PRETRANS_COL_P` | `0x012235C0` | `saturate(cor)` |
+| `SH_PRETRANS_TEX_COL_MUL_P` | `0x01223540` | `rgb = tex.a·(1−tex.rgb)·cor.rgb·cor.a`, `a = tex.a·cor.a`; a textura no alvo 1 |
+| `SH_PRETRANS_TEX_P` | `0x01221000` | `textura` (o vídeo de abertura) |
+
+Os quatro estão em `rsx_engine_bridge.c` (`kEngNativeColour`), com o alpha test do estado RSX. O registro leva o tipo
+(`PORT_NATIVE_TEX_COL` …) e o motor guarda um pipeline por tipo e estado.
+
+**Textura pela unidade 0.** O registro levava a textura da op34 no sampler global `S_Simple`; o `SH_PRETRANS_TEX_P`
+usa outro parâmetro, e o vídeo saía com uma textura velha. Na hora do marcador, a unidade 0 do RSX já tem a textura e
+o sampler certos (o flush do jogo os ligou; batem com o registro em ~95% dos casos, e os outros eram o vídeo). O
+motor agora usa o próprio bind (`sink_bind_textures`), que trata alvos de render, profundidade, cópias de feedback e
+qualquer formato. Os campos de textura e sampler saíram do registro.
+
+**Tela cheia.** Declaração de 20 bytes `{1,3,0,0, 8,2,0xC,0}`: posição float3 e coordenada float2, num buffer fixo na
+memória do RSX, sem cor. A cor é o valor atual do atributo 3 com a regra do caminho de arrays do motor (nunca escrito
+vale branco). O quadro de cor de tela cheia (`SH_PRETRANS_COL_P` sem textura) sai branco e opaco por cima dos logos
+da abertura, o que o desenho do jogo não faz, com o mesmo estado (blend desligado, sem profundidade nem stencil,
+mesmo alvo); o atributo 3 aponta para a memória principal com tamanho 0 e stride 0. Até entender, esse caso fica com
+o jogo.
+
+Resultado, GPU integrada, edição normal e Premium: logos, vídeo, título, menus, configuração da missão, cena de
+carregamento e luta iguais ao motor RSX. Na luta, ~7.500 desenhos nativos por segundo e ~360 com o jogo (os filtros
+`SH_BLOOMFAKE_*` e `SH_MATERIAL_SHADOW_P`); na cena com profundidade de campo, também DOF, FXAA, gauss e radial
+blur. STG02 60 s: 48,9 fps com o passe desligado, **49,7** com ele (máquina mais lenta que na medição anterior).
+Diagnóstico: `PORT_NATIVE_EFFECTS=<lista>` limita os efeitos nativos; `PORT_NATIVE_DEBUG` registra o programa de
+cada efeito e, nos passes de tela cheia, os arrays de vértice e o estado.
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
 2. Mapear os campos de estado de render que a op5 grava no dispositivo (blend, alpha, depth, cull).
-3. Estender o passe nativo aos outros efeitos do 2D (`SH_PRETRANS_TEX_COL_MUL_P`, `SH_PRETRANS_COL_P`, os filtros
-   `SH_BLOOMFAKE_*`), aos formatos de textura não comprimidos e às texturas que são alvos de render, e aos passes de
-   tela cheia (declaração de 20 bytes).
+3. Os filtros de tela cheia (`SH_BLOOMFAKE_*`, DOF, FXAA, gauss, radial blur) e `SH_MATERIAL_SHADOW_P`, que usam
+   constantes do efeito (op41) e mais de uma textura; e entender o quadro de cor de tela cheia.
 4. Ligar a opção `PORT_NATIVE_PASS` no build por padrão, com o passe ainda escolhido em tempo de execução, depois de
    cobrir mais telas (galeria, loja, briefing) e o HUD de mais fases.
 5. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.
