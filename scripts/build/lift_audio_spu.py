@@ -34,10 +34,14 @@ from pathlib import Path
 TASK_SHA256 = 'e33837bb55e56b6d6ae06bac574b8fa614976a6c4cf40b0b98348c868d490c53'
 TASK_SIZE = 95636
 TASK_CODE_END = 0x171D0
-MP3_SHA256 = 'adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a'
 MP3_BASE = 0x1A880             # where the task loads it (vaddr 0)
-MP3_TEXT = (0x80, 0xFF90)      # link addresses of its code segment
-MP3_TEXT_OFFSET = 0x100        # file offset of that segment
+# The flashMP3.pic versions this was checked against, by SHA-256: (link
+# addresses of the code segment, its file offset). Another firmware's copy is
+# added here once checked; until then it stays interpreted
+# (docs/PLANO0.6.1.md, N1).
+MP3_VERSIONS = {
+    'adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a': ((0x80, 0xFF90), 0x100),
+}
 MODULE_SHA256 = '615f01318fb1c02fbb03cd0fdca61b2144aaed4846bb2fc12fe4ca8fe2dc0657'
 MODULE_SIZE = 0x2A4C
 MODULE_BASE = 0x36F80
@@ -135,8 +139,10 @@ def main() -> None:
     overlays = [('module', find_image(args.elf, MODULE_SHA256, MODULE_SIZE, 'audio SPU module'),
                  MODULE_BASE, MODULE_TEXT, MODULE_TEXT_OFFSET)]
     codec = args.dev_flash / 'sys/external/flashMP3.pic' if args.dev_flash else None
-    if codec and codec.is_file() and hashlib.sha256(codec.read_bytes()).hexdigest() == MP3_SHA256:
-        overlays.insert(0, ('mp3', codec.read_bytes(), MP3_BASE, MP3_TEXT, MP3_TEXT_OFFSET))
+    version = MP3_VERSIONS.get(hashlib.sha256(codec.read_bytes()).hexdigest()) \
+        if codec and codec.is_file() else None
+    if version:
+        overlays.insert(0, ('mp3', codec.read_bytes(), MP3_BASE, version[0], version[1]))
     else:
         summary += '; flashMP3.pic: not found or not the checked version, stays interpreted'
 

@@ -1205,6 +1205,17 @@ inesperada continuaria jogando com o interpretador, em vez de ficar sem build.
 **Pronto quando:** `PORT_SPU_MISS_LOG` não registra nada nas rotas de teste das duas edições; blocos de áudio atrasados
 ≤ 0,2% em combate; fps de STG02 igual ou melhor.
 
+> **Passos 1–3 feitos em 22/11.** O `PORT_SPU_PROFILE` não chegou a gravar nada em 60 s de luta: ele grava a cada
+> 2^26 passos interpretados, e o interpretador não chega a isso. `PORT_SPU_MISS_LOG=1` (`spu_interp_bridge.c`) mostra
+> **as mesmas 18 entradas nas duas edições** em STG02: `0x030BC`, `0x06E2C`, `0x06EB0`, `0x075F8`, `0x078E0`,
+> `0x07AAC`, `0x07AD8`, `0x07F54`, `0x08360`, `0x08AF0`, `0x0AFC4`, `0x0AFC8`, `0x0E7E0`, `0x0F400`, `0x10A54`,
+> `0x125A0`, `0x1643C` e `0x16470`. Todas ficam dentro das 33 funções que o `lift_audio_spu.py` deixa interpretadas
+> (`port_audio_interpret_only`): elas fazem uma chamada indireta dentro de outra chamada, e o resolvedor geral do
+> runtime (`spu_indirect_branch`) encerra a tarefa quando o alvo não tem tradução. O MP3 passou a uma tabela de
+> versões (`MP3_VERSIONS`); só a conferida está nela, e nenhuma outra é conhecida ainda. **Próximo (passo 4):** dar
+> a essas chamadas um caminho próprio do port, que roda o alvo traduzido ou, sem tradução, interpreta só o alvo até
+> o retorno, e então traduzir as 33 funções.
+
 ### N2: shaders prontos antes de o jogo rodar (3–5 semanas)
 
 1. `PORT_SHADER_DUMP=<pasta>` grava cada programa de vértice e de fragmento novo (bytes, hash e estado que entra na

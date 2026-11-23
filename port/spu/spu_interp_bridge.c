@@ -552,6 +552,22 @@ static uint32_t spu_interp_run_from(spu_context* ctx, uint32_t start_lsa, uint32
             #undef LB
             fflush(stderr); _tr--; g_spu_interp_steps=steps; return 0x2000u;
         }
+        /* PORT_SPU_MISS_LOG=1: report each local-store address where the audio
+         * task (image 506692475) starts interpreting a sequence -- a branch
+         * target or entry the translation does not cover -- once, with the
+         * word there (an overlay may load other code at the same address).
+         * Empty on the test routes means the task ran fully translated
+         * (docs/PLANO0.6.1.md, N1). */
+        { static int s_miss = -1; static uint8_t* s_seen;
+          if (s_miss < 0) { const char* e = getenv("PORT_SPU_MISS_LOG");
+                            s_seen = (e && *e && *e != '0') ? (uint8_t*)calloc((SPU_LS_MASK + 1u) / 4u, 1) : NULL;
+                            s_miss = s_seen != NULL; }
+          if (s_miss && ctx->image_id == 506692475 && ctx->pc != seq_pc && !s_seen[(ctx->pc & SPU_LS_MASK) >> 2]) {
+              const uint32_t a = ctx->pc & SPU_LS_MASK;
+              s_seen[a >> 2] = 1;               /* benign race: at worst a repeated line */
+              fprintf(stderr, "[spu-miss] audio task interprets ls=0x%05X word=%02X%02X%02X%02X\n", a,
+                      ctx->ls[a], ctx->ls[a + 1], ctx->ls[a + 2], ctx->ls[a + 3]);
+          } }
         seq_pc = (ctx->pc + 4) & 0x3FFFC;
         /* PORT_SPU_PROFILE=<file>: steps per local-store word for image
          * 506692475 (the audio task), rewritten every ~2^26 steps as raw
