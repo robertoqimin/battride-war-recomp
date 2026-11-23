@@ -49,7 +49,8 @@ def hook_graphics_buffers(ppu, ret):
 # src/recomp/port_chunks.cmake.
 CHUNK_VARS = {'native_lookup': 'PORT_CHUNK_NATIVE_LOOKUP', 'frame_limiter': 'PORT_CHUNK_FRAME_LIMITER',
               'hot_o3': 'PORT_CHUNK_HOT_O3', 'flags_unit': 'PORT_CHUNK_FLAGS_UNIT',
-              'fast_memory': 'PORT_CHUNKS_FAST_MEMORY', 'draw': 'PORT_CHUNKS_DRAW'}
+              'fast_memory': 'PORT_CHUNKS_FAST_MEMORY', 'draw': 'PORT_CHUNKS_DRAW',
+              'engine_commands': 'PORT_CHUNK_ENGINE_COMMANDS'}
 
 def edition_for(spec, digest):
     """The recompile.json edition whose decrypted EBOOT has this SHA-256, or None."""

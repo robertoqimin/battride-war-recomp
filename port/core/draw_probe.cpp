@@ -22,6 +22,8 @@ constexpr unsigned kMaxFunctions = 8;
 std::mutex g_mu;
 std::unordered_map<unsigned, unsigned long> g_callers[kMaxFunctions];
 unsigned long g_calls[kMaxFunctions];
+constexpr unsigned kOps = 64;
+unsigned long g_ops[kOps + 1];   /* the engine's render commands by opcode; the last: out of range */
 double g_period = -1;
 std::chrono::steady_clock::time_point g_last;
 
@@ -51,8 +53,24 @@ void report(double secs)
         g_callers[f].clear();
         g_calls[f] = 0;
     }
+    unsigned long total = 0;
+    for (unsigned op = 0; op <= kOps; op++) total += g_ops[op];
+    if (total) {
+        std::fprintf(stderr, "[draw-probe] engine commands: %.0f/s:", total / secs);
+        for (unsigned op = 0; op <= kOps; op++)
+            if (g_ops[op]) std::fprintf(stderr, " op%u x%.0f/s", op, g_ops[op] / secs);
+        std::fprintf(stderr, "\n");
+        for (auto& n : g_ops) n = 0;
+    }
 }
 }  // namespace
+
+extern "C" void port_engine_command_hit(unsigned op)
+{
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (period() <= 0) return;
+    g_ops[op < kOps ? op : kOps]++;
+}
 
 extern "C" void port_draw_probe_hit(unsigned fn, unsigned lr)
 {

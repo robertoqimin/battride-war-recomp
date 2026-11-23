@@ -78,12 +78,38 @@ desenho em vários lotes de comando. Quem chama:
 
 `func_00456B38` não apareceu nas rotas medidas (menus, carregamento, luta).
 
+## A lista de comandos do motor (23/11)
+
+O caminho 2D não chama o RSX direto: `func_0044F468` (Premium `func_00450CE8`) é o **interpretador de comandos de
+render do próprio motor**. Recebe em `r4` um registro cuja primeira palavra é a operação (0 a 52, despachada por
+tabela de saltos em `0x0044F4B4`) e em `r3` o objeto de dispositivo de render; `func_004502C8` percorre a lista e
+chama o interpretador para cada registro. Medido com `PORT_DRAW_PROBE` (o wrapper conta a operação de cada
+registro): ~100 mil comandos por segundo nos menus e no HUD, sempre na mesma proporção.
+
+| Operação | Por segundo | Handler | O que faz |
+|---|---|---|---|
+| 5 | ~58.500 | `func_00456AD0` | estado de render: alpha test, blend, cull, depth |
+| 35 | ~17.600 | `func_00470E78` (cauda para `func_00470E7C`) | a decodificar |
+| 9 | ~4.650 | `func_00456548` | **o desenho**: `DRAW_ARRAYS` (campos +4, +8, +C) |
+| 20, 21, 23, 34 | ~4.500 cada | `func_004559E4`, `func_00455ABC`, `func_004559C0`, `func_00470FA0` | um de cada por desenho: gravam campos do dispositivo (`+0xCC`, `+0xD8`, `+0xDC`, `+0xE4`; a 23 zera `+0xCC`…`+0xF4`) |
+| 32 | ~1.300 | `func_00470BE0` | a decodificar |
+| 39, 41, 36, 37 | 120–780 | `func_00470B48` | a decodificar (estado de material) |
+| 1 | 240 | `func_0045582C` | viewport (`SET_VIEWPORT_HORIZONTAL`, `SET_CLIP_MIN`) |
+| 11, 12 | 0–240 | `func_0045A21C`, `func_0045A3F8` | blocos de estado (alpha, blend, cull, `INVALIDATE_L2`) |
+| 25 | 60 | `func_0045ACE8` | passe de tela cheia |
+| 42–45 | 60–120 | dentro do interpretador | blocos grandes sem chamadas, a decodificar |
+
+As operações não falam com a GPU: gravam o estado num objeto de dispositivo (vários campos são ponteiros para
+objetos do motor com tabela virtual), e só o desenho (op9) lê esse estado e emite os comandos RSX. **Um passe nativo
+substitui o desenho em cima desse dispositivo**: ler os buffers, texturas, shaders e o estado que ele guarda e
+desenhar em Vulkan, em vez de deixar `func_00456548` montar comandos do PS3.
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
-2. Ler os argumentos de `func_0044F468` (o caminho 2D): o que o motor passa por sprite (textura, retângulo, cor,
-   shader), para desenhá-lo sem montar comandos RSX.
+2. Decodificar o dispositivo: o que ficam nos campos `+0xCC`…`+0xF4` (fluxos de vértices, índices), as operações
+   35, 32 e 36–45 (texturas, shaders, constantes) e os objetos para que apontam.
 3. Ler os argumentos das funções de desenho (as estruturas do motor: malha, material, alvo) e escrever o primeiro
    passe nativo atrás de `PORT_NATIVE_PASS=hud`, com o mecanismo de símbolo fraco da busca nativa e o motor RSX como
    referência para comparar a imagem.

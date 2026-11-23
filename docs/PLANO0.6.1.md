@@ -1293,6 +1293,13 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > 2D/HUD faz ~150 chamadas por quadro, a cena 3D ~36 (por `func_005B2488` → `func_005B4718`, cada uma em vários
 > lotes) e há 4 passes de tela cheia por quadro (`func_0045ACE8`). Todo desenho passa por essas funções. Próximo: ler
 > os argumentos do caminho 2D (o primeiro passe nativo, HUD e menus). Detalhes em `docs/RENDERER.md`.
+>
+> **Passo 2, o caminho 2D (23/11).** `func_0044F468` é o interpretador da **lista de comandos de render do motor**
+> (53 operações por tabela de saltos; `r3` é o objeto de dispositivo). Com o wrapper contando a operação de cada
+> registro: ~100 mil comandos/s nos menus e no HUD; cada desenho (op9, `DRAW_ARRAYS`) vem com op20, 21, 23 e 34, que
+> gravam campos do dispositivo, e com várias op5 (estado de render). As operações só guardam estado; o desenho o lê e
+> emite os comandos RSX. O passe nativo entra no desenho, em cima desse dispositivo. Tabela em `docs/RENDERER.md`.
+> Próximo: decodificar os campos do dispositivo e as operações de textura e shader.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 

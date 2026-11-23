@@ -24,6 +24,7 @@
           "func_004B5120",
           "func_0052A540"
         ],
+        "engine_commands": "func_0044F468",
         "draw": [
           "func_00456548",
           "func_00456B38",
@@ -50,6 +51,7 @@
           "func_004B69A0",
           "func_0052BDB8"
         ],
+        "engine_commands": "func_00450CE8",
         "draw": [
           "func_00457DC8",
           "func_004583B8",

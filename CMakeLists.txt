@@ -647,6 +647,20 @@ if(PORT_DRAW_PROBE AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CXX_COMPILER_ID MATCHES 
             "void ${fn}(ppu_context* ctx) { port_draw_probe_hit(${probe_index}u, (unsigned)ctx->lr); port_lifted_draw${probe_index}(ctx); }\n")
         math(EXPR probe_index "${probe_index} + 1")
     endforeach()
+    # The engine's own render-command interpreter (docs/RENDERER.md): counted by
+    # the opcode in the first word of the command it is given (r4).
+    if(PORT_CHUNK_ENGINE_COMMANDS_FUNCS)
+        set(fn "${PORT_CHUNK_ENGINE_COMMANDS_FUNCS}")
+        set(chunk "${PORT_CHUNK_OF_${fn}}")
+        string(APPEND probe_header_${chunk}
+            "void ${fn}(ppu_context* ctx) __attribute__((weak));\n"
+            "void port_lifted_engine_commands(ppu_context* ctx) __attribute__((alias(\"_Z13${fn}P11ppu_context\")));\n")
+        list(APPEND probe_chunks "${chunk}")
+        string(APPEND probe_cpp
+            "extern \"C\" void port_engine_command_hit(unsigned op);\n"
+            "void port_lifted_engine_commands(ppu_context* ctx);\n"
+            "void ${fn}(ppu_context* ctx) { port_engine_command_hit(vm_read32(ctx->gpr[4])); port_lifted_engine_commands(ctx); }\n")
+    endif()
     list(REMOVE_DUPLICATES probe_chunks)
     foreach(chunk IN LISTS probe_chunks)
         file(WRITE "${probe_dir}/port_draw_probe_${chunk}.h"
