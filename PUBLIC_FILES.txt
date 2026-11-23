@@ -85,12 +85,12 @@ tests/test_fs_offset.cpp
 tests/test_gcm_jump.c
 tests/test_gcm_jump.sh
 tests/test_generate.py
-tests/test_lift_audio.py
 tests/test_graphics_buffers.cpp
 tests/test_graphics_buffers.sh
 tests/test_importer.py
 tests/test_input_bridge.c
 tests/test_input_bridge.sh
+tests/test_lift_audio.py
 tests/test_lwcond.cpp
 tests/test_lwcond.sh
 tests/test_ppu_memory.cpp
