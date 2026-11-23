@@ -657,9 +657,9 @@ if(PORT_DRAW_PROBE AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CXX_COMPILER_ID MATCHES 
             "void port_lifted_engine_commands(ppu_context* ctx) __attribute__((alias(\"_Z13${fn}P11ppu_context\")));\n")
         list(APPEND probe_chunks "${chunk}")
         string(APPEND probe_cpp
-            "extern \"C\" void port_engine_command_hit(unsigned op);\n"
+            "extern \"C\" void port_engine_command_hit(unsigned op, unsigned record, unsigned toc);\n"
             "void port_lifted_engine_commands(ppu_context* ctx);\n"
-            "void ${fn}(ppu_context* ctx) { port_engine_command_hit(vm_read32(ctx->gpr[4])); port_lifted_engine_commands(ctx); }\n")
+            "void ${fn}(ppu_context* ctx) { port_engine_command_hit(vm_read32(ctx->gpr[4]), (unsigned)ctx->gpr[4], (unsigned)ctx->gpr[2]); port_lifted_engine_commands(ctx); }\n")
     endif()
     list(REMOVE_DUPLICATES probe_chunks)
     foreach(chunk IN LISTS probe_chunks)

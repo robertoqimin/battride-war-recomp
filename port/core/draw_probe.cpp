@@ -75,12 +75,6 @@ void report(double secs)
 }
 }  // namespace
 
-extern "C" void port_engine_command_hit(unsigned op)
-{
-    std::lock_guard<std::mutex> lock(g_mu);
-    if (period() <= 0) return;
-    g_ops[op < kOps ? op : kOps]++;
-}
 
 static bool guest_ptr(uint32_t v)
 {
@@ -129,6 +123,85 @@ static void dump_draw(unsigned fn, unsigned lr, unsigned r3, unsigned r4, unsign
         dump_words(out, what, v, 0x40);
     }
     std::fputs(out.c_str(), stderr);
+}
+
+/* A C string at ea, if it looks like one. */
+static std::string guest_string(uint32_t ea)
+{
+    std::string s;
+    if (!guest_ptr(ea)) return s;
+    for (unsigned i = 0; i < 48; i++) {
+        const uint32_t w = vm_read32((ea + i) & ~3u);
+        const unsigned char c = (unsigned char)(w >> (24 - 8 * ((ea + i) & 3)));
+        if (!c) return s.size() >= 3 ? s : std::string();
+        if (c < 0x20 || c > 0x7E) return std::string();
+        s += (char)c;
+    }
+    return s;
+}
+
+/* The effect-manager operations (30..41) carry a handle: high 16 bits an
+ * effect in the manager's table (manager at *(TOC+0x3790), table at +0x5C),
+ * low 16 bits a parameter in the effect's table (+0x70). With PORT_DRAW_DUMP,
+ * the first records of each such operation are logged with the effect and
+ * parameter they name, and any string those objects point to. */
+static void dump_effect_op(unsigned op, unsigned record, unsigned toc)
+{
+    static int limit = -1;
+    static unsigned done[kOps];
+    if (limit < 0) { const char* e = std::getenv("PORT_DRAW_DUMP"); limit = e ? std::atoi(e) : 0; }
+    if (!limit || op < 30 || op > 41 || done[op] >= (unsigned)limit * 4) return;
+    done[op]++;
+    std::string out;
+    char buf[200];
+    const uint32_t handle = vm_read32(record + 8);
+    const uint32_t mgr = vm_read32(vm_read32(toc + 0x3790));
+    std::snprintf(buf, sizeof buf, "[effect-dump] op%u record %08X: %08X %08X %08X %08X  manager %08X handle %08X\n",
+                  op, record, vm_read32(record), vm_read32(record + 4), handle, vm_read32(record + 12), mgr, handle);
+    out += buf;
+    if (guest_ptr(mgr)) {
+        const uint32_t table = vm_read32(mgr + 0x5C), count = vm_read32(mgr + 0x64);
+        const uint32_t ei = handle >> 16, pi = handle & 0xFFFF;
+        if (guest_ptr(table) && ei < count) {
+            const uint32_t effect = vm_read32(table + ei * 4);
+            dump_words(out, "effect", effect, 0x80);
+            for (unsigned o = 0; o < 0x80; o += 4) {
+                const std::string s = guest_string(vm_read32(effect + o));
+                if (!s.empty()) { std::snprintf(buf, sizeof buf, "[effect-dump]   effect+%02X -> \"%s\"\n", o, s.c_str()); out += buf; }
+            }
+            const uint32_t ptable = vm_read32(effect + 0x70), pcount = vm_read32(effect + 0x78);
+            if (guest_ptr(ptable) && pi < pcount) {
+                const uint32_t param = vm_read32(ptable + pi * 4);
+                dump_words(out, "param", param, 0x40);
+                for (unsigned o = 0; o < 0x40; o += 4) {
+                    const std::string s = guest_string(vm_read32(param + o));
+                    if (!s.empty()) { std::snprintf(buf, sizeof buf, "[effect-dump]   param+%02X -> \"%s\"\n", o, s.c_str()); out += buf; }
+                }
+            }
+        }
+    }
+    /* op34 binds a texture: its value (record +0xC) is the texture object. */
+    const uint32_t value = vm_read32(record + 12);
+    if (op == 34 && guest_ptr(value)) {
+        dump_words(out, "texture", value, 0x60);
+        for (unsigned o = 0; o < 0x60; o += 4) {
+            const uint32_t v = vm_read32(value + o);
+            if (guest_ptr(v) && v < 0xC0000000u && v != value) {
+                char what[32];
+                std::snprintf(what, sizeof what, "texture+%02X ->", o);
+                dump_words(out, what, v, 0x40);
+            }
+        }
+    }
+    std::fputs(out.c_str(), stderr);
+}
+
+extern "C" void port_engine_command_hit(unsigned op, unsigned record, unsigned toc)
+{
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (period() <= 0) return;
+    g_ops[op < kOps ? op : kOps]++;
+    dump_effect_op(op, record, toc);
 }
 
 extern "C" void port_draw_probe_hit(unsigned fn, unsigned lr, unsigned r3, unsigned r4, unsigned r5, unsigned r6)

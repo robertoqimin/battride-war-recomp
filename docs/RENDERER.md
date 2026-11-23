@@ -125,13 +125,35 @@ Um sprite é desenhado como 6 vértices (dois triângulos) de **24 bytes**: posi
 textura em float2. O passe de tela cheia usa 4 vértices de um buffer fixo. A textura não está nesses campos:
 deve vir das operações 35/32 (a decodificar).
 
+## Material: efeitos, texturas e samplers (23/11)
+
+As operações 30–41 trabalham num **gerenciador de efeitos** (`*(TOC+0x3790)`), no estilo CgFX: o handle do comando
+(`+0x8`) tem o efeito nos 16 bits altos (tabela em `gerenciador+0x5C`) e o parâmetro nos 16 baixos (tabela em
+`efeito+0x70`). Os efeitos têm nome dentro do objeto (`efeito+0x4`). Com `PORT_DRAW_DUMP`, a sonda segue esses
+handles e despeja efeito, parâmetro e, na op34, o objeto de textura.
+
+| Operação | Registro | O que faz |
+|---|---|---|
+| 32 | efeito `0x20` | escolhe o efeito: `SH_PRETRANS_TEX_COL_P` no 2D (vértices já transformados, textura × cor) |
+| 30 | efeito `0x1F` | vem antes da 32 (técnica ou passe; a confirmar) |
+| 34 | parâmetro `0x8D`, valor = objeto de textura | liga uma textura ao sampler global `S_Simple` (efeito `0`, `GLOBAL`, `0x91` parâmetros) |
+| 35 | parâmetro `0x8D`, índice 0/1/4/5, valor 3/3/2/2 | estado do sampler (wrap U/V, filtros) |
+| 41 | ponteiro para dados, parâmetros `0x9`, `0xA`, `0xB`, `0x61` | constantes lidas da memória (matrizes ou vetores) |
+
+O **objeto de textura** (classe com tabela virtual `006BD440`, a mesma do alvo de render em `dispositivo+0xC0`) tem
+em `+0x04` o endereço na memória do RSX e em `+0x48` um ponteiro para um `CellGcmTexture` completo. O da tela de
+logos: formato `0x88` (DXT5), 1 mip, 2D, remap `0xAAE4`, 2048×1024, pitch `0x2000`, offset `0x03214000`.
+
+Com isso, um desenho 2D tem tudo o que precisa para ser feito em Vulkan sem comandos RSX: o efeito (shader trivial),
+a textura (o `CellGcmTexture`, que o backend já sabe ler), o sampler, os vértices (24 bytes, no `dispositivo+0xDC`),
+o alvo (`dispositivo+0xC0`) e o estado de render da op5 (campos do dispositivo ainda a mapear).
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
    material ficar completo.
-2. Terminar o dispositivo: a ligação de textura e de shader (operações 35, 32 e 36–45) e o formato exato da
-   declaração de vértices; com isso, desenhar um sprite em Vulkan a partir só do estado do dispositivo e comparar com
-   o motor RSX.
-3. Ler os argumentos das funções de desenho (as estruturas do motor: malha, material, alvo) e escrever o primeiro
-   passe nativo atrás de `PORT_NATIVE_PASS=hud`, com o mecanismo de símbolo fraco da busca nativa e o motor RSX como
-   referência para comparar a imagem.
+2. Mapear os campos de estado de render que a op5 grava no dispositivo (blend, alpha, depth, cull).
+3. Protótipo do primeiro passe nativo (`PORT_NATIVE_PASS=hud`): no desenho do caminho 2D, montar o desenho Vulkan a
+   partir do dispositivo e do gerenciador de efeitos, só para `SH_PRETRANS_TEX_COL_P`, e comparar a imagem com o motor
+   RSX desenhando a mesma coisa.
+4. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.

@@ -1306,6 +1306,12 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > declaração de vértices, o endereço dos vértices de cada desenho e o buffer de comandos RSX. Um sprite são 6 vértices
 > de 24 bytes (posição float3, cor RGBA8, UV float2), num buffer circular da memória principal. Falta a ligação de
 > textura e de shader.
+>
+> **Material decodificado (23/11).** As operações 30–41 usam um gerenciador de efeitos no estilo CgFX (handle =
+> efeito << 16 | parâmetro; os efeitos têm nome). O 2D usa o efeito `SH_PRETRANS_TEX_COL_P`; a op34 liga a textura ao
+> sampler global `S_Simple` e a op35 dá o estado do sampler. O objeto de textura traz um `CellGcmTexture` completo (na
+> tela de logos: DXT5, 2048×1024). O caminho 2D está todo mapeado, menos os campos de estado de render da op5.
+> Próximo: esses campos e o protótipo do passe nativo do 2D (`PORT_NATIVE_PASS=hud`).
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 
