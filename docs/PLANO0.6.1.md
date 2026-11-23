@@ -1067,6 +1067,10 @@ a partir do próprio disco). **É a prioridade da 0.6.1** (decidido em 21/11; Pa
 
 ## Parte 14: ordem única de execução
 
+**Prioridade (decidido em 23/11): a trilha nativa (Parte 15, N3 em diante) vem primeiro**, antes do que falta da
+Premium (E4, E5) e das trilhas do Windows, atualizações, tamanho e launcher. A ordem dentro dela: passe nativo do 2D
+(etapas 2 e 3), os outros efeitos do 2D e os passes de tela cheia, depois a cena 3D, sombras e pós-processamento.
+
 **Prioridade (decidido em 21/11): a trilha da Premium TV Sound Edition vem primeiro**, antes das outras desta parte, e
 entra na 0.6.1. Ela mexe no `recompile.json`, no `generate.py`, no CMake, no importer e nos arquivos nativos do port
 (Parte 13). A E2 vem antes dos outros itens dela. A Fase 1 (registradores locais), que estava em andamento, fica parada
