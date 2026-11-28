@@ -3746,6 +3746,89 @@ static void eng_native_probe(u32 index)
                   (unsigned long long)(memo ? memo->hash : eng_fp_debug_hash(fp_uc, fp_size)), vp_n); }
 }
 
+__attribute__((weak)) const port_native_mesh* port_native_mesh_take(uint32_t slot)
+{
+    (void)slot;
+    return NULL;
+}
+
+/* PORT_NATIVE_3D=check: right after a 3D batch the game drew, does the
+ * PPU's decoding of it match the vertex arrays and index buffer the draw set? */
+static void eng_native_mesh_check(u32 slot)
+{
+    const port_native_mesh* m = port_native_mesh_take(slot);
+    static u32 good, bad, shown;
+    if (!m) return;
+    int ok = 1;
+    u32 covered = 0;
+    for (u32 i = 0; i < m->n_streams; i++) {
+        const port_native_stream* st = &m->streams[i];
+        rsx_dsp_vertex_attr va;
+        rsx_dsp_get_vertex_attr(&g.rsx, st->attr, &va);
+        covered |= 1u << st->attr;
+        const u32 off = st->offset & 0x7FFFFFFFu, loc = st->offset >> 31;
+        if (va.type != st->type || va.size != st->size || va.stride != st->stride || va.offset != off || va.location != loc) {
+            ok = 0;
+            if (shown < 10) { shown++;
+                fprintf(stderr, "[native-mesh] batch %08X attr %u: record type %u size %u stride %u offset %08X loc %u,"
+                        " RSX type %u size %u stride %u offset %08X loc %u\n", m->batch, st->attr, st->type, st->size,
+                        st->stride, off, loc, va.type, va.size, va.stride, va.offset, va.location); }
+        }
+    }
+    for (u32 a = 0; a < 16; a++) {
+        if (covered & (1u << a)) continue;
+        rsx_dsp_vertex_attr va;
+        rsx_dsp_get_vertex_attr(&g.rsx, a, &va);
+        if (va.size && (m->attr_mask >> a & 1)) {
+            ok = 0;
+            if (shown < 10) { shown++;
+                fprintf(stderr, "[native-mesh] batch %08X attr %u not in the record, RSX type %u size %u stride %u\n",
+                        m->batch, a, va.type, va.size, va.stride); }
+        }
+    }
+    rsx_dsp_index_array ia;
+    rsx_dsp_get_index_array(&g.rsx, &ia);
+    if (ia.offset != m->index_offset || ia.is_u32) {
+        ok = 0;
+        if (shown < 10) { shown++;
+            fprintf(stderr, "[native-mesh] batch %08X index offset %08X, RSX %08X (u32 %u)\n", m->batch, m->index_offset,
+                    ia.offset, ia.is_u32); }
+    }
+    if (ok) good++; else bad++;
+    if (((good + bad) & 4095u) == 0)
+        fprintf(stderr, "[native-mesh] %u of %u batches decoded like the RSX saw them\n", good, good + bad);
+}
+
+/* PORT_NATIVE_3D=draw: the batch's draw from its record, through this
+ * engine as the game's own commands would have set it: the vertex arrays
+ * (every attribute not in the batch disabled), the 16-bit index buffer in
+ * local memory, and the triangles in DRAW_INDEX_ARRAY runs of 256. */
+static void eng_native_mesh_draw(u32 slot)
+{
+    const port_native_mesh* m = port_native_mesh_take(slot);
+    if (!m || !m->index_count) return;
+    /* cellGcmSetInvalidateVertexCache, as the draw begins with it */
+    rsx_draw_engine_method(0x1710u, 0u);
+    rsx_draw_engine_method(0x1714u, 0u);
+    u32 covered = 0;
+    for (u32 i = 0; i < m->n_streams; i++) {
+        const port_native_stream* st = &m->streams[i];
+        rsx_draw_engine_method(0x1680u + st->attr * 4u, st->offset);
+        rsx_draw_engine_method(0x1740u + st->attr * 4u, ((u32)st->stride << 8) | ((u32)st->size << 4) | st->type);
+        covered |= 1u << st->attr;
+    }
+    for (u32 a = 0; a < 16; a++)
+        if (!(covered & (1u << a))) rsx_draw_engine_method(0x1740u + a * 4u, 2u);
+    rsx_draw_engine_method(0x181Cu, m->index_offset);
+    rsx_draw_engine_method(0x1820u, 0x10u);
+    rsx_draw_engine_method(0x1808u, 5u);
+    for (u32 first = 0; first < m->index_count; first += 256u) {
+        const u32 n = m->index_count - first < 256u ? m->index_count - first : 256u;
+        rsx_draw_engine_method(0x1824u, ((n - 1u) << 24) | first);
+    }
+    rsx_draw_engine_method(0x1808u, 0u);
+}
+
 void rsx_draw_engine_method(u32 method, u32 arg)
 {
     if (!g.ready) return;
@@ -3759,6 +3842,8 @@ void rsx_draw_engine_method(u32 method, u32 arg)
 #ifdef ENG_NATIVE_PASS
     if (m == 0x0100u && (arg & 0xFFFF0000u) == PORT_NATIVE_MARK) { eng_native_draw(arg & 0xFFFFu); return; }
     if (m == 0x0100u && (arg & 0xFFFF0000u) == PORT_NATIVE_PROBE_MARK) { eng_native_probe(arg & 0xFFFFu); return; }
+    if (m == 0x0100u && (arg & 0xFFFF0000u) == PORT_NATIVE_MESH_MARK) { eng_native_mesh_check(arg & 0xFFFFu); return; }
+    if (m == 0x0100u && (arg & 0xFFFF0000u) == PORT_NATIVE_MESH_DRAW_MARK) { eng_native_mesh_draw(arg & 0xFFFFu); return; }
 #endif
     rsx_dispatch_method(&g.rsx, m, arg);
 }

@@ -14,6 +14,7 @@
       "memmove": "0x0036FA74",
       "toc_effect_manager": "0x3790",
       "toc_primitive_table": "0x3800",
+      "toc_render_device": "0x63F4",
       "chunk_anchors": {
         "native_lookup": "func_004B5120",
         "frame_limiter": "func_003ABE20",
@@ -28,6 +29,7 @@
         ],
         "engine_commands": "func_0044F468",
         "draw_flush": "func_00455E08",
+        "gcm_flush": "func_00618344",
         "draw": [
           "func_00456548",
           "func_00456B38",
@@ -44,6 +46,7 @@
       "memmove": "0x003712F4",
       "toc_effect_manager": "0x3818",
       "toc_primitive_table": "0x3888",
+      "toc_render_device": "0x647C",
       "chunk_anchors": {
         "native_lookup": "func_004B69A0",
         "frame_limiter": "func_003AD6A0",
@@ -58,6 +61,7 @@
         ],
         "engine_commands": "func_00450CE8",
         "draw_flush": "func_00457688",
+        "gcm_flush": "func_00619BBC",
         "draw": [
           "func_00457DC8",
           "func_004583B8",

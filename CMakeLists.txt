@@ -88,6 +88,7 @@ set(PORT_FN_FRAME_LIMITER "func_003ABE20")
 set(PORT_GUEST_MEMMOVE "0x0036FA74")
 set(PORT_TOC_EFFECT_MANAGER "0x3790")
 set(PORT_TOC_PRIMITIVE_TABLE "0x3800")
+set(PORT_TOC_RENDER_DEVICE "0x63F4")
 set(PORT_CHUNK_NATIVE_LOOKUP "029")
 set(PORT_CHUNK_FRAME_LIMITER "013")
 set(PORT_CHUNK_HOT_O3 "029")
@@ -661,7 +662,10 @@ if((PORT_DRAW_PROBE OR PORT_NATIVE_PASS) AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CX
             "if (port_native_commit((unsigned)r3)) return; "
             "ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->gpr[5] = r5; ctx->gpr[6] = r6; } ")
         string(APPEND probe_cpp "void ${PORT_CHUNK_DRAW_FLUSH_FUNCS}(ppu_context* ctx);\n"
-                                "extern \"C\" void port_native_after(unsigned r3);\n")
+                                "extern \"C\" void port_native_after(unsigned r3);\n"
+                                "extern \"C\" unsigned port_native_mesh_draw(unsigned r3, unsigned r5, unsigned toc);\n"
+                                "void ${PORT_CHUNK_GCM_FLUSH_FUNCS}(ppu_context* ctx);\n"
+                                "extern \"C\" void port_native_mesh_after(unsigned r3);\n")
         # after the game's own draw: PORT_NATIVE_PROBE marks it for the RSX engine to describe
         set(native_after0 "port_native_after((unsigned)r3_in); ")
         set(native_before0 "const uint64_t r3_in = ctx->gpr[3]; ")
@@ -683,6 +687,15 @@ if((PORT_DRAW_PROBE OR PORT_NATIVE_PASS) AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CX
         if(probe_index EQUAL 0)
             set(this_before "${native_before0}")
             set(this_after "${native_after0}")
+        elseif(probe_index EQUAL 2 AND PORT_NATIVE_PASS)
+            # the 3D scene's indexed draw (docs/RENDERER.md): r3 the batch, r5 the pass
+            # PORT_NATIVE_3D=draw: when the batch went to the RSX engine as a marker, only the
+            # game's cellGcmFlush runs (r3 the command segment), as at the end of the draw
+            set(this_before "const uint64_t r3_in = ctx->gpr[3]; "
+                "if (const unsigned seg = port_native_mesh_draw((unsigned)ctx->gpr[3], (unsigned)ctx->gpr[5], (unsigned)ctx->gpr[2])) { "
+                "const uint64_t r2 = ctx->gpr[2]; ctx->gpr[3] = seg; ${PORT_CHUNK_GCM_FLUSH_FUNCS}(ctx); DRAIN_TRAMPOLINE(ctx); "
+                "ctx->gpr[2] = r2; return; } ")
+            set(this_after "port_native_mesh_after((unsigned)r3_in); ")
         endif()
         string(APPEND probe_cpp
             "void port_lifted_draw${probe_index}(ppu_context* ctx);\n"
@@ -714,7 +727,8 @@ if((PORT_DRAW_PROBE OR PORT_NATIVE_PASS) AND PORT_CHUNKS_DRAW_FUNCS AND CMAKE_CX
     target_sources(${PROJECT_NAME} PRIVATE "${probe_dir}/draw_wrappers.cpp")
     set_property(SOURCE "${PORT_SRC}/graphics/native_pass.cpp" "${PORT_SRC}/core/draw_probe.cpp" APPEND PROPERTY
                  COMPILE_DEFINITIONS "PORT_TOC_EFFECT_MANAGER=${PORT_TOC_EFFECT_MANAGER}"
-                                     "PORT_TOC_PRIMITIVE_TABLE=${PORT_TOC_PRIMITIVE_TABLE}")
+                                     "PORT_TOC_PRIMITIVE_TABLE=${PORT_TOC_PRIMITIVE_TABLE}"
+                                     "PORT_TOC_RENDER_DEVICE=${PORT_TOC_RENDER_DEVICE}")
     if(PORT_DRAW_PROBE)
         target_sources(${PROJECT_NAME} PRIVATE "${PORT_SRC}/core/draw_probe.cpp")
     endif()

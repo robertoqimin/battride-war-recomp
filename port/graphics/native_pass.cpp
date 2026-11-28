@@ -42,6 +42,9 @@ extern "C" void vm_write32(uint64_t addr, uint32_t value);
 #ifndef PORT_TOC_EFFECT_MANAGER
 #error "PORT_TOC_EFFECT_MANAGER: the TOC offset of the effect manager (set by CMake)"
 #endif
+#ifndef PORT_TOC_RENDER_DEVICE
+#error "PORT_TOC_RENDER_DEVICE: the TOC offset of the render device pointer (set by CMake)"
+#endif
 #ifndef PORT_TOC_PRIMITIVE_TABLE
 #error "PORT_TOC_PRIMITIVE_TABLE: the TOC offset of the draw's primitive table (set by CMake)"
 #endif
@@ -347,6 +350,106 @@ extern "C" void port_native_after(unsigned r3)
     vm_write32(cur, 0x00040100u);
     vm_write32(cur + 4, PORT_NATIVE_PROBE_MARK | index);
     vm_write32(seg + 8, cur + 8);
+}
+
+/* The 3D scene (docs/RENDERER.md). A batch (r3): +0x52 the stream count,
+ * +0x54 the streams (8 bytes: attribute, type, size, stride, offset word),
+ * +0x68 the index count, +0x6C the index buffer's offset (16-bit indices,
+ * RSX local memory). r5 non-zero: a depth-only pass, which sets only the
+ * streams of attributes 0, 1 and 7. */
+namespace {
+constexpr unsigned kMeshRing = 1024;
+port_native_mesh g_meshes[kMeshRing];
+uint32_t g_mesh_next, g_mesh_pending;
+bool g_mesh_have;
+unsigned long g_mesh_checked;
+uint32_t g_mesh_toc;
+unsigned long g_mesh_native, g_mesh_fallback;
+std::chrono::steady_clock::time_point g_mesh_t0 = std::chrono::steady_clock::now();
+
+int mesh_mode()
+{
+    static int m = -1;
+    if (m < 0) {
+        const char* e = std::getenv("PORT_NATIVE_3D");
+        m = !e ? 0 : !std::strcmp(e, "check") ? 1 : !std::strcmp(e, "draw") ? 2 : 0;
+    }
+    return m;
+}
+}  // namespace
+
+extern "C" const port_native_mesh* port_native_mesh_take(uint32_t slot)
+{
+    return &g_meshes[slot % kMeshRing];
+}
+
+/* Returns the command segment when the batch went to the RSX engine as a
+ * marker (PORT_NATIVE_3D=draw) and the game's draw must not run, else 0. */
+extern "C" unsigned port_native_mesh_draw(unsigned r3, unsigned r5, unsigned toc)
+{
+    g_mesh_have = false;
+    g_mesh_toc = toc;
+    if (!mesh_mode() || !guest_ptr(r3) || !(vm_read32(r3 + 0x50) >> 16)) return 0;
+    std::lock_guard<std::mutex> lock(g_mu);
+    port_native_mesh& m = g_meshes[g_mesh_next % kMeshRing];
+    m.batch = r3;
+    m.attr_mask = (int32_t)r5 != 0 ? 0x83u : 0xFFFFu;
+    const uint32_t n = vm_read32(r3 + 0x50) & 0xFFFF, list = vm_read32(r3 + 0x54);
+    m.n_streams = 0;
+    for (uint32_t i = 0; i < n && i < PORT_NATIVE_MESH_STREAMS && guest_ptr(list); i++) {
+        const uint32_t w = vm_read32(list + i * 8);
+        port_native_stream& st = m.streams[m.n_streams];
+        st.attr = w >> 24; st.type = (w >> 16) & 0xFF; st.size = (w >> 8) & 0xFF; st.stride = w & 0xFF;
+        st.offset = vm_read32(list + i * 8 + 4);
+        if (st.attr < 16 && ((m.attr_mask >> st.attr) & 1)) m.n_streams++;
+    }
+    m.index_count = vm_read32(r3 + 0x68) >> 16;
+    m.index_offset = vm_read32(r3 + 0x6C) & 0x0FFFFFFFu;
+    g_mesh_pending = g_mesh_next++;
+    g_mesh_have = true;
+    if (mesh_mode() != 2) return 0;
+    /* the marker at the render device's segment, if it fits */
+    const uint32_t dev = vm_read32(vm_read32(toc + PORT_TOC_RENDER_DEVICE));
+    const uint32_t seg = guest_ptr(dev) ? vm_read32(dev + 0x108) : 0;
+    if (!guest_ptr(seg)) return 0;
+    const uint32_t cur = vm_read32(seg + 8), end = vm_read32(seg + 4);
+    if (!guest_ptr(cur) || cur + 8 > end) { g_mesh_fallback++; return 0; }
+    vm_write32(cur, 0x00040100u);
+    vm_write32(cur + 4, PORT_NATIVE_MESH_DRAW_MARK | (g_mesh_pending % kMeshRing));
+    vm_write32(seg + 8, cur + 8);
+    /* the draw's statistics, *(TOC + device + 4): triangles, then draws */
+    const uint32_t stats = vm_read32(toc + PORT_TOC_RENDER_DEVICE + 4);
+    if (guest_ptr(stats)) {
+        vm_write32(stats, vm_read32(stats) + m.index_count / 3);
+        vm_write32(stats + 4, vm_read32(stats + 4) + 1);
+    }
+    g_mesh_have = false;
+    g_mesh_native++;
+    const auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration<double>(now - g_mesh_t0).count() >= 5) {
+        std::fprintf(stderr, "[native-pass] 3D: %lu batches native, %lu by the game, in 5 s\n", g_mesh_native, g_mesh_fallback);
+        g_mesh_native = g_mesh_fallback = 0;
+        g_mesh_t0 = now;
+    }
+    return seg;
+}
+
+/* After the game's draw: the check marker, at the device's segment. */
+extern "C" void port_native_mesh_after(unsigned r3)
+{
+    (void)r3;
+    if (!g_mesh_have || mesh_mode() != 1) return;
+    g_mesh_have = false;
+    std::lock_guard<std::mutex> lock(g_mu);
+    const uint32_t dev = vm_read32(vm_read32(g_mesh_toc + PORT_TOC_RENDER_DEVICE));
+    const uint32_t seg = guest_ptr(dev) ? vm_read32(dev + 0x108) : 0;
+    if (!guest_ptr(seg)) return;
+    const uint32_t cur = vm_read32(seg + 8), end = vm_read32(seg + 4);
+    if (!guest_ptr(cur) || cur + 8 > end) return;
+    vm_write32(cur, 0x00040100u);
+    vm_write32(cur + 4, PORT_NATIVE_MESH_MARK | (g_mesh_pending % kMeshRing));
+    vm_write32(seg + 8, cur + 8);
+    g_mesh_checked++;
 }
 
 extern "C" const port_native_record* port_native_take(uint32_t id)

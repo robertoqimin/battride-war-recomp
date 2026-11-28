@@ -95,7 +95,7 @@ class GenerateCacheTests(unittest.TestCase):
         ppu.mkdir()
         (ppu / 'ppu_recomp_000.cpp').write_text('void func_00000100(ppu_context* ctx) {\n}\n'
                                                 'void func_00000200(ppu_context* ctx) {\n}\n')
-        edition = {'title_id': 'BLJS10219', 'memmove': '0x3712F4', 'toc_effect_manager': '0x3818', 'toc_primitive_table': '0x3888'}
+        edition = {'title_id': 'BLJS10219', 'memmove': '0x3712F4', 'toc_effect_manager': '0x3818', 'toc_primitive_table': '0x3888', 'toc_render_device': '0x647C'}
         g.chunk_map(ppu, {'native_lookup': 'func_00000100', 'frame_limiter': 'func_00000200'}, edition)
         text = (ppu / 'port_chunks.cmake').read_text()
         self.assertIn('set(PORT_TITLE_ID "BLJS10219")', text)
@@ -128,7 +128,7 @@ class EditionTests(unittest.TestCase):
             self.assertIn(a['flags_unit'], a['fast_memory'])
             for key in ('arena_hook_return', 'memmove'):
                 self.assertRegex(e[key], r'^0x[0-9A-F]{8}$')
-            for key in ('toc_effect_manager', 'toc_primitive_table'):
+            for key in ('toc_effect_manager', 'toc_primitive_table', 'toc_render_device'):
                 self.assertRegex(e[key], r'^0x[0-9A-F]{4}$')
 
 if __name__ == '__main__':

@@ -50,7 +50,8 @@ def hook_graphics_buffers(ppu, ret):
 CHUNK_VARS = {'native_lookup': 'PORT_CHUNK_NATIVE_LOOKUP', 'frame_limiter': 'PORT_CHUNK_FRAME_LIMITER',
               'hot_o3': 'PORT_CHUNK_HOT_O3', 'flags_unit': 'PORT_CHUNK_FLAGS_UNIT',
               'fast_memory': 'PORT_CHUNKS_FAST_MEMORY', 'draw': 'PORT_CHUNKS_DRAW',
-              'engine_commands': 'PORT_CHUNK_ENGINE_COMMANDS', 'draw_flush': 'PORT_CHUNK_DRAW_FLUSH'}
+              'engine_commands': 'PORT_CHUNK_ENGINE_COMMANDS', 'draw_flush': 'PORT_CHUNK_DRAW_FLUSH',
+              'gcm_flush': 'PORT_CHUNK_GCM_FLUSH'}
 
 def edition_for(spec, digest):
     """The recompile.json edition whose decrypted EBOOT has this SHA-256, or None."""
@@ -90,9 +91,10 @@ def chunk_map(ppu, anchors, edition=None):
         out.append('set(PORT_FN_FRAME_LIMITER "%s")' % anchors['frame_limiter'])
         out.append('set(PORT_GUEST_MEMMOVE "0x%08X")' % int(edition['memmove'], 16))
         # TOC offsets the native renderer pass reads (docs/RENDERER.md): the
-        # effect manager and the draw's primitive table.
+        # effect manager, the draw's primitive table and the render device.
         out.append('set(PORT_TOC_EFFECT_MANAGER "0x%X")' % int(edition['toc_effect_manager'], 16))
         out.append('set(PORT_TOC_PRIMITIVE_TABLE "0x%X")' % int(edition['toc_primitive_table'], 16))
+        out.append('set(PORT_TOC_RENDER_DEVICE "0x%X")' % int(edition['toc_render_device'], 16))
     (ppu / 'port_chunks.cmake').write_text('\n'.join(out) + '\n')
     return where
 

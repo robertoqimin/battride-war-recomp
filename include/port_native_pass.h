@@ -28,6 +28,32 @@ typedef struct port_native_record {
     float vertices[PORT_NATIVE_MAX_VERTS * 12];
 } port_native_record;
 
+/* The 3D scene's draw (func_005B4718 in BLJS10220): one batch of a mesh,
+ * its vertex streams and its 16-bit index buffer in RSX memory, drawn as
+ * triangles. PORT_NATIVE_3D=check: after the game's own draw, a
+ * NO_OPERATION carrying PORT_NATIVE_MESH_MARK | slot, for the engine to
+ * check the decoding against what the draw set. */
+#define PORT_NATIVE_MESH_MARK 0xBA7C0000u
+/* PORT_NATIVE_3D=draw: in place of the game's draw, NO_OPERATION carrying
+ * PORT_NATIVE_MESH_DRAW_MARK | slot; the RSX engine draws the batch. */
+#define PORT_NATIVE_MESH_DRAW_MARK 0xBA7B0000u
+#define PORT_NATIVE_MESH_STREAMS 16u
+
+typedef struct port_native_stream {
+    uint8_t attr, type, size, stride;  /* SET_VERTEX_DATA_ARRAY_FORMAT's fields */
+    uint32_t offset;                   /* SET_VERTEX_DATA_ARRAY_OFFSET: location in bit 31 */
+} port_native_stream;
+
+typedef struct port_native_mesh {
+    uint32_t n_streams;
+    port_native_stream streams[PORT_NATIVE_MESH_STREAMS];
+    uint32_t attr_mask;                /* the streams the pass draws: all, or 0x83 for a depth-only pass */
+    uint32_t index_offset, index_count;
+    uint32_t batch;                    /* the batch object, for diagnostics */
+} port_native_mesh;
+
+const port_native_mesh* port_native_mesh_take(uint32_t slot);
+
 /* The effect name a probe marker carries, or 0. Engine side. */
 const char* port_native_probe_name(uint32_t index);
 
