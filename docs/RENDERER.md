@@ -280,6 +280,38 @@ também sai igual, o que valida a rede de segurança. STG02 60 s: 52,7 fps com o
 medição (a primeira deu 57,4 contra 51,8; a variação entre execuções é dessa ordem): custo neutro. O radial blur ainda
 não foi comparado quadro a quadro (aparece pouco na rota).
 
+## Cena 3D, etapa 1: os lotes como registros (28/11)
+
+O desenho indexado (`func_005B4718`; Premium `func_005B5F90`) desenha **um lote** de uma malha, e tudo o que ele
+precisa está no objeto do lote (`r3`):
+
+| Campo | Conteúdo |
+|---|---|
+| `+0x50` | quantidade de desenhos (0: nada a fazer) |
+| `+0x52`, `+0x54` | quantidade de streams e a lista: 8 bytes cada, atributo, tipo, tamanho, stride, palavra de offset (local em bit 31) |
+| `+0x68` | quantidade de índices (16 bits, triângulos) |
+| `+0x6C` | offset do buffer de índices na memória local |
+
+`r5` diferente de zero marca o passe só de profundidade, que liga apenas os atributos 0, 1 e 7. Programas,
+constantes, texturas e estado de render já estão no buffer de comandos, postos antes por outras funções. O
+dispositivo vem do TOC (`toc_render_device`: `0x63F4`, Premium `0x647C`), e logo depois há o contador de
+estatísticas (triângulos e chamadas). A função começa com `cellGcmSetInvalidateVertexCache` e termina com
+`cellGcmFlush` (âncora `gcm_flush`: `func_00618344`, Premium `func_00619BBC`).
+
+`PORT_NATIVE_3D` (no build com `PORT_NATIVE_PASS`):
+
+- `check`: o PPU decodifica cada lote e, depois do desenho do jogo, um marcador `0xBA7C0000 | slot` faz o motor
+  comparar com os arrays de vértice e o buffer de índices que o desenho pôs. Rota logos → luta: **606.208 de 606.208**
+  lotes iguais na edição normal, **626.688 de 626.688** na Premium.
+- `draw`: no lugar do desenho do jogo vai um marcador `0xBA7B0000 | slot`; o PPU soma as estatísticas e roda só o
+  `cellGcmFlush` do jogo. O motor põe os arrays e o índice e desenha os triângulos em blocos de 256, a partir do
+  registro. ~14–16 mil lotes por segundo na luta, todos pelo registro; cutscene e luta iguais ao motor RSX nas duas
+  edições.
+
+Custo (STG02 60 s, 2D nativo nos dois lados, pares alternados): com o 3D pelo registro 50,2 e 50,5 fps, sem ele 49,4
+e 54,4. Média 1,5 fps abaixo, dentro da variação entre execuções. Por enquanto fica opcional: o ganho do 3D não vem
+de mover a montagem dos comandos, e sim dos próximos passos.
+
 ## Próximos passos
 
 1. Pegar também os métodos calculados (texturas, constantes de vértice) e os comandos da `libgcm`, para o mapa de
@@ -289,4 +321,5 @@ não foi comparado quadro a quadro (aparece pouco na rota).
    que caírem na tradução.
 4. Ligar a opção `PORT_NATIVE_PASS` no build por padrão, com o passe ainda escolhido em tempo de execução, depois de
    cobrir mais telas (galeria, loja, briefing) e o HUD de mais fases.
-5. Depois do 2D, a cena 3D (`func_005B2488`): o mesmo dispositivo, com outros efeitos e buffers indexados.
+5. Cena 3D: desenhar os lotes direto no backend, sem passar pelos métodos RSX (vértices pelo registro, como no 2D), e
+   identificar os pares de programas da cena (materiais `SH_MATERIAL_*`) para escrever os mais usados à mão.

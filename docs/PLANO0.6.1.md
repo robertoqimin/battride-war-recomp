@@ -1346,6 +1346,12 @@ a parte mais longa e de maior risco, e quase não muda o fps (a thread de render
 > campo, gauss 5×5, radial blur e FXAA; qualquer outro é desenhado do mesmo registro com a tradução do programa do
 > jogo. Nas duas edições, a rota inteira sai igual ao motor RSX com **nenhum desenho do caminho 2D com o jogo**. Custo
 > neutro (52,7 contra 53,1 fps, dentro da variação). Detalhes em `docs/RENDERER.md`.
+>
+> **Cena 3D, etapa 1, 28/11.** Os lotes do desenho indexado viram registros (streams de vértice, buffer de índices de
+> 16 bits): `PORT_NATIVE_3D=check` confere a decodificação com o que o desenho do jogo pôs (100% dos ~600 mil lotes da
+> rota, nas duas edições) e `PORT_NATIVE_3D=draw` troca o desenho do jogo por um marcador, com o motor desenhando a
+> partir do registro. Imagem igual; custo dentro do ruído (opcional por enquanto). Próximo: desenhar os lotes direto
+> no backend e escrever os programas de material mais usados.
 
 ### N4 (pontual): sair do modelo de máquina do PS3
 
